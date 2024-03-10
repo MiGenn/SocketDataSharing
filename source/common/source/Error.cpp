@@ -1,6 +1,5 @@
-#include "Interface/Error.hpp"
+#include "Error.hpp"
 #include "ErrorHandler.hpp"
-#include <stdexcept>
 
 void SDS::SetErrorOccuredCallback(ErrorOccuredCallback callback, void* callbackContext)
 {

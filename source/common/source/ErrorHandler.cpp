@@ -4,14 +4,13 @@
 
 using namespace SDS;
 
-void DoNothingWhenErrorOccured(Error, intmax_t, void*) {};
+void DoNothingWhenErrorOccured(Error, int64_t, void*) {};
 ErrorOccuredCallback ErrorHandler::m_callback = DoNothingWhenErrorOccured;
 
 void ErrorHandler::SignalError(Error error) noexcept
 {
     assert(error != Error::Success && error != Error::UnexpectedSystemError);
-
-    m_callback(error, (intmax_t)0, m_callbackContext);
+    m_callback(error, (int64_t)0, m_callbackContext);
 }
 
 void ErrorHandler::SetCallback(ErrorOccuredCallback callback, void* callbackContext)
@@ -20,10 +19,12 @@ void ErrorHandler::SetCallback(ErrorOccuredCallback callback, void* callbackCont
     {
         try
         {
-            callback(Error::Success, (intmax_t)0, callbackContext);
+            callback(Error::Success, (int64_t)0, callbackContext);
 
             m_callback = callback;
             m_callbackContext = callbackContext;
+
+            return;
         }
         catch (...)
         {
@@ -31,5 +32,5 @@ void ErrorHandler::SetCallback(ErrorOccuredCallback callback, void* callbackCont
         }
     }
 
-    throw std::logic_error("Invalid error occured callback!");
+    throw std::logic_error("Invalid ErrorOccuredCallback!");
 }

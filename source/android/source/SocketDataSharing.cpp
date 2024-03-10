@@ -1,4 +1,4 @@
-#include "Interface/SocketDataSharing.hpp"
+#include "SocketDataSharing.hpp"
 
 namespace SDS
 {

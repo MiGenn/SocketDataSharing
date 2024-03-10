@@ -1,33 +1,23 @@
 #pragma once
 #include <cstdint>
 
-#ifdef SOCKETDATASHARING_EXPORTS
-	#ifdef __ANDROID__
-		#define SOCKETDATASHARING_API
-	#elif defined _WIN64
-		#define SOCKETDATASHARING_API __declspec(dllexport)
-	#else
-		#error "This platform is not supported"
-	#endif
-#else
-	#ifdef __ANDROID__
-		#define SOCKETDATASHARING_API
-	#elif defined _WIN64
-		#define SOCKETDATASHARING_API __declspec(dllimport)
-	#else
-		#error "This platform is not supported"
-	#endif
-#endif
+#include "IndirectIncludes/SocketDataSharingAPIDefine.hpp"
 
 namespace SDS
 {
 	extern "C"
 	{
 		//TODO: manually assign numbers when the library is production ready.
-		enum class Error : uintmax_t
+		enum class Error : int32_t
 		{
 			Success,
 			UnexpectedSystemError,
+
+			NotEnoughMemory,
+			PassedPointerIsNull,
+			NotSupportedMachine,
+			IsAlreadyInitialized,
+			IsNotInitialized,
 
 			NetworkSubsystemIsUnavailable,
 			TooManyApplicationsAreUsingSystemLibrary,
@@ -35,10 +25,11 @@ namespace SDS
 		};
 
 		//Corresponding system error should be ignored unless the error is Error::UnexpectedSystemError.
-		typedef void(*ErrorOccuredCallback)(Error error, intmax_t correspondingSystemError, void* callbackContext);
+		typedef void(*ErrorOccuredCallback)(Error error, int64_t correspondingSystemError, void* callbackContext);
 
-		//The callback is set to an empty function by default. So that the library won't crash if you don't provide one.
-		//But you should call this function to be able to handle errors. It should be the first function you call.
+		//The callback is set to an empty function by default. So that the library won't crash if you don't provide a callback.
+		//But you should set the callback to be able to handle errors.
+		//The callback will be called once with a value of Error::Success to check its validity.
 		//Passing an invalid callback will throw an exception.
 		SOCKETDATASHARING_API void SetErrorOccuredCallback(ErrorOccuredCallback callback, void* callbackContext);
 	}

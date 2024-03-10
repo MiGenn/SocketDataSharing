@@ -1,5 +1,5 @@
 #pragma once
-#include "Interface/Error.hpp"
+#include "Error.hpp"
 
 #ifdef __ANDROID__
 
@@ -31,6 +31,7 @@ public:
 #elif defined _WIN64
 	static void Handle_WSAStartup(int errorCode) noexcept;
 	static void Handle_WSACleanup() noexcept;
+	static void Handle_GetAdaptersAddresses(ULONG errorCode) noexcept;
 #endif
 
 private:
