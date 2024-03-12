@@ -10,11 +10,28 @@ namespace SDS
 		Error = 0
 	};
 
+	//Prefer using only the false value.
+	enum class Bool : uint8_t
+	{
+		False = 0,
+		True = 1,
+	};
+
 	enum class ErrorBool : uint8_t
 	{
 		Error = 0,
 		False = 1,
 		True = 2
+	};
+
+	struct alignas(1) ErrorSupportedProtocols final
+	{
+		ErrorIndicator errorIndicator;
+
+		Bool isIPv4TCPSupported;
+		Bool isIPv4UDPSupported;
+		Bool isIPv6TCPSupported;
+		Bool isIPv6UDPSupported;
 	};
 
 	//Zero address means no address.

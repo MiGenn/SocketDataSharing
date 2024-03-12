@@ -38,12 +38,40 @@ void ErrorHandler::Handle_WSACleanup() noexcept
     const int errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSANOTINITIALISED);
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
+void ErrorHandler::Handle_WSAEnumProtocols() noexcept
+{
+    const int errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT && errorCode != WSAEINVAL); //Invalid arguments.
+    assert(errorCode != WSAENOBUFS); //The buffer is too small.
 
     switch (errorCode)
     {
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
         break;
 
     default:
@@ -80,7 +108,6 @@ void ErrorHandler::Handle_socket(int addressFamily, int socketType, int protocol
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSANOTINITIALISED);
     assert(errorCode != WSAEINVAL); //Invalid arguments
     assert(errorCode != WSAEPROTOTYPE); //Invalid arguments
 
@@ -133,6 +160,10 @@ void ErrorHandler::Handle_socket(int addressFamily, int socketType, int protocol
             error = Error::IPv6UDPIsNotSupported;
         break;
 
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
     default:
         error = Error::UnexpectedSystemError;
     }
@@ -146,7 +177,6 @@ void ErrorHandler::Handle_bind() noexcept
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSANOTINITIALISED);
     assert(errorCode != WSAEFAULT); //Invalid arguments or the passed address family doesn't match the address family of the socket.
     assert(errorCode != WSAENOTSOCK); //The "socket" pointer points to something else.
     assert(errorCode != WSAEACCES); //TODO: write a clarifying comment.
@@ -170,6 +200,10 @@ void ErrorHandler::Handle_bind() noexcept
         error = Error::AllDynamicPortsAreTaken;
         break;
 
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
     default:
         error = Error::UnexpectedSystemError;
     }
@@ -183,7 +217,6 @@ void ErrorHandler::Handle_getsockname() noexcept
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSANOTINITIALISED);
     assert(errorCode != WSAEFAULT); //Invalid arguments.
     assert(errorCode != WSAENOTSOCK); //The "socket" pointer points to something else.
     assert(errorCode != WSAEINVAL); //Socket isn't bound or bound with a zero address.
@@ -192,6 +225,10 @@ void ErrorHandler::Handle_getsockname() noexcept
     {
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
         break;
 
     default:
@@ -207,7 +244,6 @@ void ErrorHandler::Handle_closesocket() noexcept
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSANOTINITIALISED);
     assert(errorCode != WSAEWOULDBLOCK); //TODO: write a clarifying comment.
     
     switch (errorCode)
@@ -218,6 +254,10 @@ void ErrorHandler::Handle_closesocket() noexcept
 
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
         break;
 
     default:

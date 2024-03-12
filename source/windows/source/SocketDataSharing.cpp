@@ -12,6 +12,7 @@
 
 namespace SDS
 {
+    std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept;
     std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
     bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
     const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
@@ -71,9 +72,46 @@ namespace SDS
         return (ErrorIndicator)1;
     }
 
+    ErrorSupportedProtocols EnumerateSupportedProtocols() noexcept
+    {
+        ErrorSupportedProtocols supportedProtocols{};
+
+        auto [protocolInfoArray, protocolInfoArraySize] = _GetAvailableProtocols();
+        if (protocolInfoArray != nullptr)
+        {
+            for (auto i = 0; i < protocolInfoArraySize; ++i)
+            {
+                if (protocolInfoArray[i].iAddressFamily == AF_INET && protocolInfoArray[i].iSocketType == SOCK_STREAM &&
+                    protocolInfoArray[i].iProtocol == IPPROTO_TCP)
+                {
+                    supportedProtocols.isIPv4TCPSupported = Bool::True;
+                }
+                else if (protocolInfoArray[i].iAddressFamily == AF_INET && protocolInfoArray[i].iSocketType == SOCK_DGRAM &&
+                    protocolInfoArray[i].iProtocol == IPPROTO_UDP)
+                {
+                    supportedProtocols.isIPv4UDPSupported = Bool::True;
+                }
+                else if (protocolInfoArray[i].iAddressFamily == AF_INET6 && protocolInfoArray[i].iSocketType == SOCK_STREAM &&
+                    protocolInfoArray[i].iProtocol == IPPROTO_TCP)
+                {
+                    supportedProtocols.isIPv6TCPSupported = Bool::True;
+                }
+                else if (protocolInfoArray[i].iAddressFamily == AF_INET6 && protocolInfoArray[i].iSocketType == SOCK_DGRAM &&
+                    protocolInfoArray[i].iProtocol == IPPROTO_UDP)
+                {
+                    supportedProtocols.isIPv6UDPSupported = Bool::True;
+                }
+            }
+
+            supportedProtocols.errorIndicator = (ErrorIndicator)1;
+        }
+
+        return supportedProtocols;
+    }    
+
     NetworkIPAddresses* GetNetworkIPAddressesArray(int32_t* size_out) noexcept
     {
-        if (!State::isInitialized)
+        if (!State::isInitialized) //It's not necessary to do this check.
         {
             ErrorHandler::SignalError(Error::IsNotInitialized);
             return nullptr;
@@ -120,7 +158,7 @@ namespace SDS
 
     ErrorBool IsIPv4AddressPreferred(const NetworkIPAddresses* networkIPAddressesInNetworkBO) noexcept
     {
-        if (!State::isInitialized)
+        if (!State::isInitialized) //It's not necessary to do this check.
         {
             ErrorHandler::SignalError(Error::IsNotInitialized);
             return ErrorBool::Error;
@@ -142,12 +180,6 @@ namespace SDS
 
     SocketHandle CreateIPv4TCPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept
     {
-        if (!State::isInitialized)
-        {
-            ErrorHandler::SignalError(Error::IsNotInitialized);
-            return nullptr;
-        }
-
         if (InternalIPv4AddressUtils::IsZero(ipv4Address))
         {
             ErrorHandler::SignalError(Error::UnavailableIPAddress);
@@ -162,12 +194,6 @@ namespace SDS
 
     SocketHandle CreateIPv4UDPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept
     {
-        if (!State::isInitialized)
-        {
-            ErrorHandler::SignalError(Error::IsNotInitialized);
-            return nullptr;
-        }
-
         if (InternalIPv4AddressUtils::IsZero(ipv4Address))
         {
             ErrorHandler::SignalError(Error::UnavailableIPAddress);
@@ -182,12 +208,6 @@ namespace SDS
 
     SocketHandle CreateIPv6TCPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept
     {
-        if (!State::isInitialized)
-        {
-            ErrorHandler::SignalError(Error::IsNotInitialized);
-            return nullptr;
-        }
-
         if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
         {
             ErrorHandler::SignalError(Error::UnavailableIPAddress);
@@ -202,12 +222,6 @@ namespace SDS
 
     SocketHandle CreateIPv6UDPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept
     {
-        if (!State::isInitialized)
-        {
-            ErrorHandler::SignalError(Error::IsNotInitialized);
-            return nullptr;
-        }
-
         if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
         {
             ErrorHandler::SignalError(Error::UnavailableIPAddress);
@@ -222,12 +236,6 @@ namespace SDS
 
     ErrorIndicator DestroySocket(SocketHandle socketHandle) noexcept
     {
-        if (!State::isInitialized)
-        {
-            ErrorHandler::SignalError(Error::IsNotInitialized);
-            return ErrorIndicator::Error;
-        }
-
         if (closesocket(reinterpret_cast<SOCKET>(socketHandle)) != 0)
         {
             ErrorHandler::Handle_closesocket();
@@ -237,7 +245,43 @@ namespace SDS
         return (ErrorIndicator)1;
     }
 
+    //The pointer is null only if an error occured.
+    //The int value is used to store the protocol info array's size.
+    std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept
+    {
+        try
+        {
+            static Buffer memoryForProtocolInfos(8192);
+            WSAPROTOCOL_INFOW* protocolInfos;
+            DWORD errorCodeOrProtocolInfoCount;
+
+            while (true)
+            {
+                protocolInfos = reinterpret_cast<WSAPROTOCOL_INFOW*>(memoryForProtocolInfos.GetData());
+                auto memoryForProtocolInfosSize = (DWORD)memoryForProtocolInfos.GetSize();
+
+                errorCodeOrProtocolInfoCount = WSAEnumProtocolsW(nullptr, protocolInfos, &memoryForProtocolInfosSize);
+                if (memoryForProtocolInfosSize > memoryForProtocolInfos.GetSize())
+                    memoryForProtocolInfos.Resize(memoryForProtocolInfosSize);
+                else
+                    break;
+            }
+
+            if (errorCodeOrProtocolInfoCount != SOCKET_ERROR)
+                return { protocolInfos, errorCodeOrProtocolInfoCount };
+
+            ErrorHandler::Handle_WSAEnumProtocols();
+        }
+        catch (...)
+        {
+            ErrorHandler::SignalError(Error::NotEnoughMemory);
+        }
+
+        return { nullptr, 0 };
+    }
+
     //The bool value is set to false if the function failed.
+    //The pointer can be null if no data was found.
     std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept
     {
         static constexpr ULONG flags = GAA_FLAG_SKIP_ANYCAST & GAA_FLAG_SKIP_MULTICAST &
