@@ -1,11 +1,7 @@
 #pragma once
 #include "Error.hpp"
 
-#ifdef __ANDROID__
-
-#elif defined _WIN64
-	#include "WinAPI.hpp"
-#endif
+#include "SystemIncludeDefine.hpp"
 
 class ErrorHandler final
 {
@@ -32,6 +28,11 @@ public:
 	static void Handle_WSAStartup(int errorCode) noexcept;
 	static void Handle_WSACleanup() noexcept;
 	static void Handle_GetAdaptersAddresses(ULONG errorCode) noexcept;
+	static void Handle_socket(int addressFamily, int socketType, int protocol) noexcept;
+	static void Handle_bind() noexcept;
+	static void Handle_getsockname() noexcept;
+	static void Handle_closesocket() noexcept;
+
 #endif
 
 private:

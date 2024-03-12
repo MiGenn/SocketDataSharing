@@ -1,12 +1,6 @@
 #pragma once
 
-#ifdef __ANDROID__
-
-#elif defined(_WIN64)
-	#include "WinAPI.hpp"
-#else
-	#error "This platform is not supported"
-#endif
+#include "SystemIncludeDefine.hpp"
 
 //BO means byte order.
 

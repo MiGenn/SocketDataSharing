@@ -15,13 +15,28 @@ namespace SDS
 
 			NotEnoughMemory,
 			PassedPointerIsNull,
-			NotSupportedMachine,
 			IsAlreadyInitialized,
 			IsNotInitialized,
 
+			NetworkSubsystemFailed,
+			UnavailableIPAddress,
+			TCPUDPPortNumberIsInvalid,
+			TCPEndpointIsTakenOrInWaitState,
+			InvalidSocketHandle,
+			AllDynamicPortsAreTaken,
+
+			NotSupportedMachine,
 			NetworkSubsystemIsUnavailable,
 			TooManyApplicationsAreUsingSystemLibrary,
-			NetworkIsDown,
+			SystemSocketLimitIsReached,
+			ServiceProviderFailed,
+
+			IPv4IsNotSupported,
+			IPv6IsNotSupported,
+			IPv4TCPIsNotSupported,
+			IPv4UDPIsNotSupported,
+			IPv6TCPIsNotSupported,			
+			IPv6UDPIsNotSupported,
 		};
 
 		//Corresponding system error should be ignored unless the error is Error::UnexpectedSystemError.

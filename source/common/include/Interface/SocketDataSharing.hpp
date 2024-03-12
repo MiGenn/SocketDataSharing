@@ -22,12 +22,45 @@ namespace SDS
 		SOCKETDATASHARING_API ErrorIndicator Shutdown() noexcept;
 
 		//Host can be connected to multiple networks and have more than one IP address per network.
+		//This function returns all IP addresses assigned to each network. Some IP addresses can be zero but only one per network.
 		//If the host isn't connected to any network the returned IP address count is 0 but the data pointer isn't null.
 		//The data pointer is null only if an error occured. Also you don't need to deallocate the memory.
 		//The returned IPv6 addresses are in network byte order.
 		SOCKETDATASHARING_API NetworkIPAddresses* GetNetworkIPAddressesArray(int32_t* size_out) noexcept;
 
-		//This function accepts any addresses. BO means byte order.
+		//This function accepts any addresses even zero ones. BO means byte order.
 		SOCKETDATASHARING_API ErrorBool IsIPv4AddressPreferred(const NetworkIPAddresses* networkIPAddressesInNetworkBO) noexcept;
+
+		//Passing a zero address is illegal. TODO: create a function to create a socket and bind it.
+		//Passed port number must range from 1024 to 49151 (inclusive).
+		//You can also pass 0 which will assign a random port number within 49152-65535 range (inclusive).
+		//In this case, the random port number will be assigned to the portNumberInHostBO_inout.
+		//If an error has occured, the returned pointer is zero.
+		SOCKETDATASHARING_API SocketHandle CreateIPv4TCPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept;
+
+		//Passing a zero address is illegal. TODO:
+		//Passed port number must range from 1024 to 49151 (inclusive).
+		//You can also pass 0 which will assign a random port number within 49152-65535 range (inclusive).
+		//In this case, the random port number will be assigned to the portNumberInHostBO_inout.
+		//If an error has occured, the returned pointer is zero.
+		SOCKETDATASHARING_API SocketHandle CreateIPv4UDPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept;
+
+		//Passing a zero address is illegal. TODO:
+		//Passed port number must range from 1024 to 49151 (inclusive).
+		//You can also pass 0 which will assign a random port number within 49152-65535 range (inclusive).
+		//In this case, the random port number will be assigned to the portNumberInHostBO_inout.
+		//If an error has occured, the returned pointer is zero.
+		SOCKETDATASHARING_API SocketHandle CreateIPv6TCPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept;
+
+		//Passing a zero address is illegal. TODO:
+		//Passed port number must range from 1024 to 49151 (inclusive).
+		//You can also pass 0 which will assign a random port number within 49152-65535 range (inclusive).
+		//In this case, the random port number will be assigned to the portNumberInHostBO_inout.
+		//If an error has occured, the returned pointer is zero.
+		SOCKETDATASHARING_API SocketHandle CreateIPv6UDPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept;
+
+		//The socket handle will become unusable if no error has occured.
+		//TODO: add a comment regarding set socket options.
+		SOCKETDATASHARING_API ErrorIndicator DestroySocket(SocketHandle socketHandle) noexcept;
 	}
 }

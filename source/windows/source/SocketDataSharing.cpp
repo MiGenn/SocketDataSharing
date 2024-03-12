@@ -3,7 +3,9 @@
 #include "State.hpp"
 #include "ErrorHandler.hpp"
 #include "InternalTypeUtils.hpp"
+#include "InternalEndiannessConversions.hpp"
 #include "Utilities/Buffer.hpp"
+#include "PortConstants.hpp"
 #include <utility>
 #include <vector>
 #include <cassert>
@@ -13,6 +15,12 @@ namespace SDS
     std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
     bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
     const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
+    bool _IsTCPUDPPortInvalid(const uint16_t* tcpudpPortNumberInHostBO) noexcept;
+    SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
+    SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
+        const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept;
+    SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
+    bool _BindSocket(SOCKET socketToBind, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
 
     ErrorIndicator Initialize() noexcept
     {
@@ -132,6 +140,103 @@ namespace SDS
         return ErrorBool::False;
     }
 
+    SocketHandle CreateIPv4TCPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept
+    {
+        if (!State::isInitialized)
+        {
+            ErrorHandler::SignalError(Error::IsNotInitialized);
+            return nullptr;
+        }
+
+        if (InternalIPv4AddressUtils::IsZero(ipv4Address))
+        {
+            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            return nullptr;
+        }
+
+        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+            return nullptr;
+
+        return _CreateAndBindIPv4Socket(SOCK_STREAM, IPPROTO_TCP, ipv4Address, *portNumberInHostBO_inout);
+    }
+
+    SocketHandle CreateIPv4UDPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept
+    {
+        if (!State::isInitialized)
+        {
+            ErrorHandler::SignalError(Error::IsNotInitialized);
+            return nullptr;
+        }
+
+        if (InternalIPv4AddressUtils::IsZero(ipv4Address))
+        {
+            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            return nullptr;
+        }
+
+        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+            return nullptr;
+
+        return _CreateAndBindIPv4Socket(SOCK_DGRAM, IPPROTO_UDP, ipv4Address, *portNumberInHostBO_inout);
+    }
+
+    SocketHandle CreateIPv6TCPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept
+    {
+        if (!State::isInitialized)
+        {
+            ErrorHandler::SignalError(Error::IsNotInitialized);
+            return nullptr;
+        }
+
+        if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
+        {
+            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            return nullptr;
+        }
+
+        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+            return nullptr;
+
+        return _CreateAndBindIPv6Socket(SOCK_STREAM, IPPROTO_TCP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
+    }
+
+    SocketHandle CreateIPv6UDPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept
+    {
+        if (!State::isInitialized)
+        {
+            ErrorHandler::SignalError(Error::IsNotInitialized);
+            return nullptr;
+        }
+
+        if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
+        {
+            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            return nullptr;
+        }
+
+        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+            return nullptr;
+
+        return _CreateAndBindIPv6Socket(SOCK_DGRAM, IPPROTO_UDP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
+    }
+
+    ErrorIndicator DestroySocket(SocketHandle socketHandle) noexcept
+    {
+        if (!State::isInitialized)
+        {
+            ErrorHandler::SignalError(Error::IsNotInitialized);
+            return ErrorIndicator::Error;
+        }
+
+        if (closesocket(reinterpret_cast<SOCKET>(socketHandle)) != 0)
+        {
+            ErrorHandler::Handle_closesocket();
+            return ErrorIndicator::Error;
+        }
+
+        return (ErrorIndicator)1;
+    }
+
     //The bool value is set to false if the function failed.
     std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept
     {
@@ -178,7 +283,7 @@ namespace SDS
         networkIPAddresses_out = {};
 
         bool isNetworkIPAddressesNotEmpty = false;
-        IP_ADAPTER_UNICAST_ADDRESS* nextUnicastAddress = ipAdapter.FirstUnicastAddress;
+        const IP_ADAPTER_UNICAST_ADDRESS* nextUnicastAddress = ipAdapter.FirstUnicastAddress;
         while (nextUnicastAddress != nullptr)
         {
             if (nextUnicastAddress->DadState == IpDadStatePreferred)
@@ -187,15 +292,16 @@ namespace SDS
                 {
                     networkIPAddresses_out.v4NetworkPrefixLength = (uint8_t)nextUnicastAddress->OnLinkPrefixLength;
                     InternalIPv4AddressUtils::CopyFrom(
-                        &reinterpret_cast<sockaddr_in*>(nextUnicastAddress->Address.lpSockaddr)->sin_addr, 
-                        networkIPAddresses_out.v4);
+                        &reinterpret_cast<const sockaddr_in*>(nextUnicastAddress->Address.lpSockaddr)->sin_addr, networkIPAddresses_out.v4);
                 }
                 else
                 {
+                    const auto& socketName = *reinterpret_cast<const sockaddr_in6*>(nextUnicastAddress->Address.lpSockaddr);
+
                     networkIPAddresses_out.v6NetworkPrefixLength = (uint8_t)nextUnicastAddress->OnLinkPrefixLength;
-                    InternalIPv6AddressUtils::CopyFrom(
-                        &reinterpret_cast<sockaddr_in6*>(nextUnicastAddress->Address.lpSockaddr)->sin6_addr,
-                        networkIPAddresses_out.v6);
+                    InternalIPv6AddressUtils::CopyFrom(&socketName.sin6_addr, networkIPAddresses_out.v6);
+                    networkIPAddresses_out.v6.scopeID = socketName.sin6_scope_id;
+                    networkIPAddresses_out.v6.flowInfo = socketName.sin6_flowinfo;
                 }
 
                 isNetworkIPAddressesNotEmpty = true;
@@ -237,5 +343,102 @@ namespace SDS
             return &ipv4Address;
 
         return &ipv6AddressInNetworkBO;
+    }
+
+    bool _IsTCPUDPPortInvalid(const uint16_t* tcpudpPortNumberInHostBO) noexcept
+    {
+        if (tcpudpPortNumberInHostBO == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
+            return true;
+        }
+
+        if (*tcpudpPortNumberInHostBO != (uint16_t)0 &&
+            Port::userRange.IsOutsideRange(*tcpudpPortNumberInHostBO))
+        {
+            ErrorHandler::SignalError(Error::TCPUDPPortNumberIsInvalid);
+            return true;
+        }
+
+        return false;
+    }
+
+    //The returned socket handle can only be nullptr if an error occured.
+    //If the passed port number is 0, it will be updated.
+    SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept
+    {
+        sockaddr_in socketName;
+        socketName.sin_family = AF_INET;
+        socketName.sin_port = HostToNetworkBO(portNumberInHostBO_inout);
+        InternalIPv4AddressUtils::CopyFrom(ipv4Address.octets, reinterpret_cast<IPv4Address&>(socketName.sin_addr));
+
+        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketName), (int)sizeof(sockaddr_in));
+        if (socketHandle != nullptr)
+            portNumberInHostBO_inout = NetworkToHostBO(socketName.sin_port);
+
+        return socketHandle;
+    }
+
+    //The returned socket handle can only be nullptr if an error occured.
+    //If the passed port number is 0, it will be updated.
+    SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
+        const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept
+    {
+        sockaddr_in6 socketName;
+        socketName.sin6_family = AF_INET6;
+        socketName.sin6_port = HostToNetworkBO(portNumberInHostBO_inout);
+        socketName.sin6_flowinfo = ipv4AddressInNetworkBO.flowInfo;
+        InternalIPv6AddressUtils::CopyFrom(ipv4AddressInNetworkBO.hextets, reinterpret_cast<IPv6Address&>(socketName.sin6_addr));
+        socketName.sin6_scope_id = ipv4AddressInNetworkBO.scopeID;
+
+        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketName), (int)sizeof(sockaddr_in6));
+        if (socketHandle != nullptr)
+            portNumberInHostBO_inout = NetworkToHostBO(socketName.sin6_port);
+
+        return socketHandle;
+    }
+
+    //The returned socket handle can only be nullptr if an error occured.
+    //If the passed port number is 0, it will be updated.
+    SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept
+    {
+        assert(socketNameInNetworkBO_inout.sa_family != AF_UNSPEC);
+        assert(type == SOCK_STREAM && protocol == IPPROTO_TCP ||
+            type == SOCK_DGRAM && protocol == IPPROTO_UDP);
+
+        if (const auto socketHandle = socket(socketNameInNetworkBO_inout.sa_family, type, protocol); socketHandle != INVALID_SOCKET)
+        {
+            if (_BindSocket(socketHandle, socketNameInNetworkBO_inout, socketNameSizeInBytes))
+                return reinterpret_cast<SocketHandle>(socketHandle);
+
+            //In this context, it doesn't matter if it fails.
+            closesocket(socketHandle);
+            return nullptr;
+        }
+
+        ErrorHandler::Handle_socket(socketNameInNetworkBO_inout.sa_family, type, protocol);
+        return nullptr;
+    }
+    
+    //The bool value is set to false if the function failed.
+    //If the passed port number is 0, it will be updated.
+    bool _BindSocket(SOCKET socketToBind, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept
+    {
+        if (bind(socketToBind, &socketNameInNetworkBO_inout, socketNameSizeInBytes) == 0)
+        {
+            if (reinterpret_cast<uint16_t*>(&socketNameInNetworkBO_inout)[1] == (uint16_t)0) //Checks for the port number being zero.
+            {
+                if (getsockname(socketToBind, &socketNameInNetworkBO_inout, &socketNameSizeInBytes) != 0)
+                {
+                    ErrorHandler::Handle_getsockname();
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        ErrorHandler::Handle_bind();
+        return false;
     }
 }

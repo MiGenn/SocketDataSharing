@@ -7,29 +7,27 @@ set(NEEDED_INCLUDE_DIRECTORIES source/common/include source/common/include/Inter
 set(NEEDED_LIBRARIES "")
 set(NEEDED_SOURCE_FILES 
     source/common/include/Interface/IndirectIncludes/SocketDataSharingAPIDefine.hpp 
+    source/common/include/SystemIncludeDefine.hpp 
+
     source/common/include/Interface/SocketDataSharing.hpp 
-    source/common/include/Interface/Error.hpp 
-    source/common/source/Error.cpp 
-    source/common/include/Interface/EndiannessConversions.hpp 
-    source/common/source/EndiannessConversions.cpp 
+    source/common/include/State.hpp "source/common/source/State.cpp" 
+    source/common/include/Interface/Error.hpp "source/common/source/Error.cpp" 
+    source/common/include/ErrorHandler.hpp "source/common/source/ErrorHandler.cpp" 
+    source/common/include/Interface/EndiannessConversions.hpp "source/common/source/EndiannessConversions.cpp" 
     source/common/include/InternalEndiannessConversions.hpp 
+
     source/common/include/Interface/IndirectIncludes/Types.hpp 
     source/common/include/Interface/IndirectIncludes/TypeUtils.hpp 
     source/common/include/InternalTypeUtils.hpp 
-    source/common/include/Interface/IndirectIncludes/TypeUtils/IPv4AddressUtils.hpp 
-    source/common/source/TypeUtils/IPv4AddressUtils.cpp 
-    source/common/include/InternalTypeUtils/InternalIPv4AddressUtils.hpp 
-    source/common/source/InternalTypeUtils/InternalIPv4AddressUtils.cpp 
-    source/common/include/Interface/IndirectIncludes/TypeUtils/IPv6AddressUtils.hpp 
-    source/common/source/TypeUtils/IPv6AddressUtils.cpp 
-    source/common/include/InternalTypeUtils/InternalIPv6AddressUtils.hpp 
-    source/common/source/InternalTypeUtils/InternalIPv6AddressUtils.cpp 
-    source/common/include/ErrorHandler.hpp 
-    source/common/source/ErrorHandler.cpp 
-    source/common/include/State.hpp 
-    source/common/source/State.cpp 
-    source/common/include/Utilities/Buffer.hpp 
-    source/common/source/Utilities/Buffer.cpp 
+    source/common/include/Interface/IndirectIncludes/TypeUtils/IPv4AddressUtils.hpp "source/common/source/TypeUtils/IPv4AddressUtils.cpp" 
+    source/common/include/InternalTypeUtils/InternalIPv4AddressUtils.hpp "source/common/source/InternalTypeUtils/InternalIPv4AddressUtils.cpp" 
+    source/common/include/Interface/IndirectIncludes/TypeUtils/IPv6AddressUtils.hpp "source/common/source/TypeUtils/IPv6AddressUtils.cpp" 
+    source/common/include/InternalTypeUtils/InternalIPv6AddressUtils.hpp "source/common/source/InternalTypeUtils/InternalIPv6AddressUtils.cpp" 
+    
+    source/common/include/PortConstants.hpp 
+
+    source/common/include/Utilities/Buffer.hpp "source/common/source/Utilities/Buffer.cpp" 
+    source/common/include/Utilities/Range.hpp
     )
 
 if(${PLATFORM_TO_BUILD_FOR} STREQUAL Windows)
@@ -40,8 +38,8 @@ if(${PLATFORM_TO_BUILD_FOR} STREQUAL Windows)
     list(APPEND NEEDED_INCLUDE_DIRECTORIES source/windows/include)
     list(APPEND NEEDED_LIBRARIES Ws2_32.lib Iphlpapi.lib)
     list(APPEND NEEDED_SOURCE_FILES 
-        source/windows/source/SocketDataSharing.cpp 
         source/windows/include/WinAPI.hpp 
+        source/windows/source/SocketDataSharing.cpp 
         source/windows/source/ErrorHandlerWindowsDefinitions.cpp 
         )
 elseif(${PLATFORM_TO_BUILD_FOR} STREQUAL Android)
