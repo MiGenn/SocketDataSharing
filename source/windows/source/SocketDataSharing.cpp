@@ -5,7 +5,6 @@
 #include "InternalTypeUtils.hpp"
 #include "InternalEndiannessConversions.hpp"
 #include "Utilities/Buffer.hpp"
-#include "PortConstants.hpp"
 #include <utility>
 #include <vector>
 #include <cassert>
@@ -16,7 +15,6 @@ namespace SDS
     std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
     bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
     const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
-    bool _IsTCPUDPPortInvalid(const uint16_t* tcpudpPortNumberInHostBO) noexcept;
     SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
     SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
         const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept;
@@ -186,8 +184,11 @@ namespace SDS
             return nullptr;
         }
 
-        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+        if (portNumberInHostBO_inout == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
             return nullptr;
+        }
 
         return _CreateAndBindIPv4Socket(SOCK_STREAM, IPPROTO_TCP, ipv4Address, *portNumberInHostBO_inout);
     }
@@ -200,8 +201,11 @@ namespace SDS
             return nullptr;
         }
 
-        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+        if (portNumberInHostBO_inout == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
             return nullptr;
+        }
 
         return _CreateAndBindIPv4Socket(SOCK_DGRAM, IPPROTO_UDP, ipv4Address, *portNumberInHostBO_inout);
     }
@@ -214,8 +218,11 @@ namespace SDS
             return nullptr;
         }
 
-        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+        if (portNumberInHostBO_inout == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
             return nullptr;
+        }
 
         return _CreateAndBindIPv6Socket(SOCK_STREAM, IPPROTO_TCP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
     }
@@ -228,8 +235,11 @@ namespace SDS
             return nullptr;
         }
 
-        if (_IsTCPUDPPortInvalid(portNumberInHostBO_inout))
+        if (portNumberInHostBO_inout == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
             return nullptr;
+        }
 
         return _CreateAndBindIPv6Socket(SOCK_DGRAM, IPPROTO_UDP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
     }
@@ -244,12 +254,12 @@ namespace SDS
 
         return (ErrorIndicator)1;
     }
-
+    
     ErrorIndicator SetIPTCPSocketDestructionTimeout(SocketHandle socketHandle, Bool isEnabled, uint16_t timeInSeconds) noexcept
     {
-        linger optionValue{ (u_short)isEnabled, (u_short)timeInSeconds };
+        const linger optionValue{ (u_short)isEnabled, (u_short)timeInSeconds };
         if (setsockopt(reinterpret_cast<SOCKET>(socketHandle), SOL_SOCKET, SO_LINGER,
-            reinterpret_cast<char*>(&optionValue), sizeof(linger)) != 0)
+            reinterpret_cast<const char*>(&optionValue), sizeof(linger)) != 0)
         {
             ErrorHandler::Handle_setsockopt();
             return ErrorIndicator::Error;
@@ -260,9 +270,9 @@ namespace SDS
 
     ErrorIndicator SetIPUDPSocketBroadcast(SocketHandle socketHandle, Bool isEnabled) noexcept
     {
-        auto optionValue = (BOOL)isEnabled;
+        const auto optionValue = (BOOL)isEnabled;
         if (setsockopt(reinterpret_cast<SOCKET>(socketHandle), SOL_SOCKET, SO_BROADCAST, 
-                reinterpret_cast<char*>(&optionValue), sizeof(BOOL)) != 0)
+                reinterpret_cast<const char*>(&optionValue), sizeof(BOOL)) != 0)
         {
             ErrorHandler::Handle_setsockopt();
             return ErrorIndicator::Error;
@@ -415,24 +425,6 @@ namespace SDS
         return &ipv6AddressInNetworkBO;
     }
 
-    bool _IsTCPUDPPortInvalid(const uint16_t* tcpudpPortNumberInHostBO) noexcept
-    {
-        if (tcpudpPortNumberInHostBO == nullptr)
-        {
-            ErrorHandler::SignalError(Error::PassedPointerIsNull);
-            return true;
-        }
-
-        if (*tcpudpPortNumberInHostBO != (uint16_t)0 &&
-            Port::userRange.IsOutsideRange(*tcpudpPortNumberInHostBO))
-        {
-            ErrorHandler::SignalError(Error::TCPUDPPortNumberIsInvalid);
-            return true;
-        }
-
-        return false;
-    }
-
     //The returned socket handle can only be nullptr if an error occured.
     //If the passed port number is 0, it will be updated.
     SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept
@@ -478,8 +470,16 @@ namespace SDS
 
         if (const auto socketHandle = socket(socketNameInNetworkBO_inout.sa_family, type, protocol); socketHandle != INVALID_SOCKET)
         {
-            if (_BindSocket(socketHandle, socketNameInNetworkBO_inout, socketNameSizeInBytes))
-                return reinterpret_cast<SocketHandle>(socketHandle);
+            auto isNonBlockingModeEnabled = (u_long)1;
+            if (ioctlsocket(socketHandle, FIONBIO, &isNonBlockingModeEnabled) == 0)
+            {
+                if (_BindSocket(socketHandle, socketNameInNetworkBO_inout, socketNameSizeInBytes))
+                    return reinterpret_cast<SocketHandle>(socketHandle);
+            }
+            else
+            {
+                ErrorHandler::Handle_ioctlsocket();
+            }
 
             //In this context, it doesn't matter if it fails.
             closesocket(socketHandle);

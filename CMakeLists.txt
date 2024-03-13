@@ -24,8 +24,6 @@ set(NEEDED_SOURCE_FILES
     source/common/include/Interface/IndirectIncludes/TypeUtils/IPv6AddressUtils.hpp "source/common/source/TypeUtils/IPv6AddressUtils.cpp" 
     source/common/include/InternalTypeUtils/InternalIPv6AddressUtils.hpp "source/common/source/InternalTypeUtils/InternalIPv6AddressUtils.cpp" 
     
-    source/common/include/PortConstants.hpp 
-
     source/common/include/Utilities/Buffer.hpp "source/common/source/Utilities/Buffer.cpp" 
     source/common/include/Utilities/Range.hpp
     )

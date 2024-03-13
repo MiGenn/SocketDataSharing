@@ -1,4 +1,5 @@
 #include "ErrorHandler.hpp"
+#include <cstddef>
 #include <stdexcept>
 #include <cassert>
 

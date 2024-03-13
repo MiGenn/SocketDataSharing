@@ -172,13 +172,41 @@ void ErrorHandler::Handle_socket(int addressFamily, int socketType, int protocol
     CALL_CALLBACK;
 }
 
+void ErrorHandler::Handle_ioctlsocket() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT); //Invalid arguments
+
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
 void ErrorHandler::Handle_bind() noexcept
 {
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
     assert(errorCode != WSAEFAULT); //Invalid arguments or the passed address family doesn't match the address family of the socket.
-    assert(errorCode != WSAEACCES); //TODO: write a clarifying comment.
     assert(errorCode != WSAEINVAL); //The socket is already bound.
 
     switch (errorCode)
@@ -191,8 +219,11 @@ void ErrorHandler::Handle_bind() noexcept
         error = Error::UnavailableIPAddress;
         break;
 
+    //The socket address is taken by a socket with SO_EXCLUSIVEADDRUSE option enabled. 
+    //It shouldn't happen because the library doesn't use SO_REUSEADDR option.    
+    case WSAEACCES:
     case WSAEADDRINUSE:
-        error = Error::TCPEndpointIsTakenOrInWaitState;
+        error = Error::TCPSocketAddressIsTakenOrInWaitState;
         break;
 
     case WSAENOBUFS:
@@ -250,7 +281,7 @@ void ErrorHandler::Handle_closesocket() noexcept
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSAEWOULDBLOCK); //TODO: write a clarifying comment.
+    assert(errorCode != WSAEWOULDBLOCK); //It's not an error.
     
     switch (errorCode)
     {
@@ -290,6 +321,81 @@ void ErrorHandler::Handle_setsockopt() noexcept
 
     case WSAENOPROTOOPT:
         error = Error::UnsupportedSocketOption;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
+void ErrorHandler::Handle_connect() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT); //Invalid arguments.
+    assert(errorCode != WSAEWOULDBLOCK); //It's not an error.
+
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENETUNREACH:
+        error = Error::CannotReachNetwork;
+        break;
+
+    case WSAEHOSTUNREACH:
+        error = Error::CannotReachAnotherHost;
+        break;
+
+    case WSAECONNREFUSED:
+        error = Error::AnotherHostRejectedConnection;
+        break;
+
+    case WSAETIMEDOUT:
+        error = Error::CannotEstablishConnection;
+        break;
+
+    case WSAEADDRINUSE: //Happens if the address was set to a zero one in the bind call.
+        error = Error::TCPSocketAddressIsTakenOrInWaitState;
+        break;
+
+    case WSAEADDRNOTAVAIL: //Happens if the address to connect to was set to a zero one.
+    case WSAEAFNOSUPPORT:
+        error = Error::InvalidIPAddressToConnectTo;
+        break;
+
+    case WSAEISCONN: //TODO: can probably be removed
+        error = Error::SocketIsAlreadyConnected;
+        break;
+
+    case WSAEALREADY:
+        error = Error::SocketIsAlreadyConnecting;
+        break;
+
+    case WSAEINVAL: //TODO: can probably be removed
+        error = Error::ListeningSocketsCannotConnect;
+        break;
+
+    case WSAEACCES: //TODO: can probably be removed
+        error = Error::BroadcastIsNotEnabled;
+        break;
+
+    case WSAENOBUFS:
+        error = Error::NotEnoughMemory;
         break;
 
     case WSAENOTSOCK:

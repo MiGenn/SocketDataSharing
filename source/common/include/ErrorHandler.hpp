@@ -30,10 +30,12 @@ public:
 	static void Handle_WSAEnumProtocols() noexcept; //Can be used with the functions suffixed with W or A.
 	static void Handle_GetAdaptersAddresses(ULONG errorCode) noexcept;
 	static void Handle_socket(int addressFamily, int socketType, int protocol) noexcept;
+	static void Handle_ioctlsocket() noexcept;
 	static void Handle_bind() noexcept;
 	static void Handle_getsockname() noexcept;
 	static void Handle_closesocket() noexcept;
 	static void Handle_setsockopt() noexcept;
+	static void Handle_connect() noexcept;
 #endif
 
 private:
