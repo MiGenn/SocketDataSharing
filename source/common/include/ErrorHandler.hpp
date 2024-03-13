@@ -33,7 +33,7 @@ public:
 	static void Handle_bind() noexcept;
 	static void Handle_getsockname() noexcept;
 	static void Handle_closesocket() noexcept;
-
+	static void Handle_setsockopt() noexcept;
 #endif
 
 private:

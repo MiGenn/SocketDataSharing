@@ -10,7 +10,7 @@ namespace SDS
 		Error = 0
 	};
 
-	//Prefer using only the false value.
+	//Prefer using only the false value for comparisons.
 	enum class Bool : uint8_t
 	{
 		False = 0,

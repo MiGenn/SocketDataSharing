@@ -178,7 +178,6 @@ void ErrorHandler::Handle_bind() noexcept
     assert(errorCode != 0);
 
     assert(errorCode != WSAEFAULT); //Invalid arguments or the passed address family doesn't match the address family of the socket.
-    assert(errorCode != WSAENOTSOCK); //The "socket" pointer points to something else.
     assert(errorCode != WSAEACCES); //TODO: write a clarifying comment.
     assert(errorCode != WSAEINVAL); //The socket is already bound.
 
@@ -200,6 +199,10 @@ void ErrorHandler::Handle_bind() noexcept
         error = Error::AllDynamicPortsAreTaken;
         break;
 
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
     case WSANOTINITIALISED:
         error = Error::IsNotInitialized;
         break;
@@ -218,13 +221,16 @@ void ErrorHandler::Handle_getsockname() noexcept
     assert(errorCode != 0);
 
     assert(errorCode != WSAEFAULT); //Invalid arguments.
-    assert(errorCode != WSAENOTSOCK); //The "socket" pointer points to something else.
     assert(errorCode != WSAEINVAL); //Socket isn't bound or bound with a zero address.
 
     switch (errorCode)
     {
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
         break;
 
     case WSANOTINITIALISED:
@@ -248,12 +254,46 @@ void ErrorHandler::Handle_closesocket() noexcept
     
     switch (errorCode)
     {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
     case WSAENOTSOCK:
         error = Error::InvalidSocketHandle;
         break;
 
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
+void ErrorHandler::Handle_setsockopt() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT && errorCode != WSAEINVAL); //Invalid arguments.
+    assert(errorCode != WSAENETRESET && errorCode != WSAENOTCONN); //SO_KEEPALIVE is set and somethin happened.
+ 
+    switch (errorCode)
+    {
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENOPROTOOPT:
+        error = Error::UnsupportedSocketOption;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
         break;
 
     case WSANOTINITIALISED:

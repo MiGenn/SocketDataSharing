@@ -24,6 +24,7 @@ namespace SDS
 			TCPEndpointIsTakenOrInWaitState,
 			InvalidSocketHandle,
 			AllDynamicPortsAreTaken,
+			UnsupportedSocketOption,
 
 			NotSupportedMachine,
 			NetworkSubsystemIsUnavailable,

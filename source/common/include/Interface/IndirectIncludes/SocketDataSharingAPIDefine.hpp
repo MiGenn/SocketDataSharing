@@ -11,7 +11,7 @@
 		#error "This platform or/and compiler are not supported"
 	#endif
 #else
-	#ifdef defined(__ANDROID__) && defined(__clang__)
+	#if defined(__ANDROID__) && defined(__clang__)
 		#define SOCKETDATASHARING_API
 	#elif defined(_WIN64) && defined(_MSC_VER)
 		#ifdef SOCKETDATASHARING_STATIC

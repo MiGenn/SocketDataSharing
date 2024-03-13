@@ -245,6 +245,32 @@ namespace SDS
         return (ErrorIndicator)1;
     }
 
+    ErrorIndicator SetIPTCPSocketDestructionTimeout(SocketHandle socketHandle, Bool isEnabled, uint16_t timeInSeconds) noexcept
+    {
+        linger optionValue{ (u_short)isEnabled, (u_short)timeInSeconds };
+        if (setsockopt(reinterpret_cast<SOCKET>(socketHandle), SOL_SOCKET, SO_LINGER,
+            reinterpret_cast<char*>(&optionValue), sizeof(linger)) != 0)
+        {
+            ErrorHandler::Handle_setsockopt();
+            return ErrorIndicator::Error;
+        }
+
+        return (ErrorIndicator)1;
+    }
+
+    ErrorIndicator SetIPUDPSocketBroadcast(SocketHandle socketHandle, Bool isEnabled) noexcept
+    {
+        auto optionValue = (BOOL)isEnabled;
+        if (setsockopt(reinterpret_cast<SOCKET>(socketHandle), SOL_SOCKET, SO_BROADCAST, 
+                reinterpret_cast<char*>(&optionValue), sizeof(BOOL)) != 0)
+        {
+            ErrorHandler::Handle_setsockopt();
+            return ErrorIndicator::Error;
+        }
+
+        return (ErrorIndicator)1;
+    }
+
     //The pointer is null only if an error occured.
     //The int value is used to store the protocol info array's size.
     std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept
