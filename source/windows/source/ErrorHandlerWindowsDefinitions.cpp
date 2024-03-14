@@ -310,8 +310,8 @@ void ErrorHandler::Handle_setsockopt() noexcept
     const auto errorCode = WSAGetLastError();
     assert(errorCode != 0);
 
-    assert(errorCode != WSAEFAULT && errorCode != WSAEINVAL); //Invalid arguments.
-    assert(errorCode != WSAENETRESET && errorCode != WSAENOTCONN); //SO_KEEPALIVE is set and somethin happened.
+    assert(errorCode != WSAEFAULT); //Invalid arguments.
+    assert(errorCode != WSAENETRESET && errorCode != WSAENOTCONN); //SO_KEEPALIVE is set and something happened.
  
     switch (errorCode)
     {
@@ -319,8 +319,136 @@ void ErrorHandler::Handle_setsockopt() noexcept
         error = Error::NetworkSubsystemFailed;
         break;
 
+    case WSAEINVAL: //Invalid level for the socket. It can be either the library's fault or the user's fault.
     case WSAENOPROTOOPT:
         error = Error::UnsupportedSocketOption;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
+void ErrorHandler::Handle_getsockopt() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT); //Invalid arguments.
+
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAEINVAL: //Invalid level for the socket. It can be either the library's fault or the user's fault.
+    case WSAENOPROTOOPT:
+        error = Error::UnsupportedSocketOption;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
+void ErrorHandler::Handle_listen() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEINVAL); //Socket isn't bound.
+
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAEADDRINUSE: //Happens if the address was set to a zero one in the bind call.
+        error = Error::TCPSocketAddressIsTakenOrInWaitState;
+        break;
+
+    case WSAENOBUFS:
+        error = Error::NotEnoughMemory;
+        break;
+
+    case WSAEMFILE:
+        error = Error::SystemSocketLimitIsReached;
+        break;
+
+    case WSAEOPNOTSUPP:
+        error = Error::SocketDoesNotSupportListeningMode;
+        break;
+
+    case WSAEISCONN:
+        error = Error::SocketIsAlreadyConnectedOrConnecting;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
+void ErrorHandler::Handle_accept() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT); //Invalid arguments.
+    assert(errorCode != WSAEWOULDBLOCK); //It's not an error.
+    assert(errorCode != WSAECONNRESET); //The other host terminated the connection prior to the accept call.
+
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENOBUFS:
+        error = Error::NotEnoughMemory;
+        break;
+
+    case WSAEMFILE:
+        error = Error::SystemSocketLimitIsReached;
+        break;
+
+    case WSAEOPNOTSUPP:
+    case WSAEINVAL:
+        error = Error::SocketMustBeInListeningMode;
         break;
 
     case WSAENOTSOCK:
@@ -378,16 +506,13 @@ void ErrorHandler::Handle_connect() noexcept
         error = Error::InvalidIPAddressToConnectTo;
         break;
 
+    case WSAEALREADY: //TODO: can probably be removed
     case WSAEISCONN: //TODO: can probably be removed
-        error = Error::SocketIsAlreadyConnected;
-        break;
-
-    case WSAEALREADY:
-        error = Error::SocketIsAlreadyConnecting;
+        error = Error::SocketIsAlreadyConnectedOrConnecting;
         break;
 
     case WSAEINVAL: //TODO: can probably be removed
-        error = Error::ListeningSocketsCannotConnect;
+        error = Error::SocketIsAlreadyInListeningMode;
         break;
 
     case WSAEACCES: //TODO: can probably be removed

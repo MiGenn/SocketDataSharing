@@ -35,6 +35,9 @@ public:
 	static void Handle_getsockname() noexcept;
 	static void Handle_closesocket() noexcept;
 	static void Handle_setsockopt() noexcept;
+	static void Handle_getsockopt() noexcept;
+	static void Handle_listen() noexcept;
+	static void Handle_accept() noexcept;
 	static void Handle_connect() noexcept;
 #endif
 

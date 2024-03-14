@@ -11,15 +11,26 @@
 
 namespace SDS
 {
-    std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept;
-    std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
-    bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
-    const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
-    SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
-    SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
+    static std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept;
+    static std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
+    static bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
+    static const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
+    static SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
+    static SocketHandle _CreateAndBindIPv6Socket(int type, int protocol,
         const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept;
-    SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
-    bool _BindSocket(SOCKET socketToBind, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
+    static SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
+    static bool _BindSocket(SOCKET socketToBind, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
+
+    inline static SocketHandle ToSocketHandle(SOCKET nativeSocketHandle) noexcept
+    {
+        return reinterpret_cast<SocketHandle>(++nativeSocketHandle);
+    }
+
+    inline static SOCKET ToNativeSocketHandle(SocketHandle socketHandle) noexcept
+    {
+        auto nativeSocketHandle = reinterpret_cast<SOCKET>(socketHandle);
+        return --nativeSocketHandle;
+    }
 
     ErrorIndicator Initialize() noexcept
     {
@@ -244,9 +255,39 @@ namespace SDS
         return _CreateAndBindIPv6Socket(SOCK_DGRAM, IPPROTO_UDP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
     }
 
+    ErrorIndicator SetSocketInListeningMode(SocketHandle socketHandle, int32_t pendingConnectionQueueSize) noexcept
+    {
+        BOOL isAlreadyListening{};
+        int boolSizeInBytes = sizeof(BOOL);
+        if (getsockopt(ToNativeSocketHandle(socketHandle), SOL_SOCKET, SO_ACCEPTCONN, 
+                reinterpret_cast<char*>(&isAlreadyListening), &boolSizeInBytes) != 0)
+        {
+            if (WSAGetLastError() == WSAENOPROTOOPT)
+                ErrorHandler::SignalError(Error::SocketDoesNotSupportListeningMode);
+            else
+                ErrorHandler::Handle_getsockopt();
+           
+            return ErrorIndicator::Error;
+        }
+
+        if (isAlreadyListening != (BOOL)0)
+        {
+            ErrorHandler::SignalError(Error::SocketIsAlreadyInListeningMode);
+            return ErrorIndicator::Error;
+        }
+
+        if (listen(ToNativeSocketHandle(socketHandle), pendingConnectionQueueSize) != 0)
+        {
+            ErrorHandler::Handle_listen();
+            return ErrorIndicator::Error;
+        }
+
+        return (ErrorIndicator)1;
+    }
+
     ErrorIndicator DestroySocket(SocketHandle socketHandle) noexcept
     {
-        if (closesocket(reinterpret_cast<SOCKET>(socketHandle)) != 0)
+        if (closesocket(ToNativeSocketHandle(socketHandle)) != 0 && WSAGetLastError() != WSAEWOULDBLOCK)
         {
             ErrorHandler::Handle_closesocket();
             return ErrorIndicator::Error;
@@ -254,12 +295,30 @@ namespace SDS
 
         return (ErrorIndicator)1;
     }
+
+    ErrorIndicator SetTCPSocketNaglesAlgorithm(SocketHandle socketHandle, Bool isEnabled) noexcept
+    {
+        if (isEnabled == Bool::False)
+            isEnabled = Bool::True;
+        else
+            isEnabled = Bool::False;
+
+        const auto optionValue = (DWORD)isEnabled;
+        if (setsockopt(ToNativeSocketHandle(socketHandle), IPPROTO_TCP, TCP_NODELAY,
+                reinterpret_cast<const char*>(&isEnabled), (int)sizeof(DWORD)) != 0)
+        {
+            ErrorHandler::Handle_setsockopt();
+            return ErrorIndicator::Error;
+        }
+
+        return (ErrorIndicator)1;
+    }
     
-    ErrorIndicator SetIPTCPSocketDestructionTimeout(SocketHandle socketHandle, Bool isEnabled, uint16_t timeInSeconds) noexcept
+    ErrorIndicator SetSocketDestructionTimeout(SocketHandle socketHandle, Bool isEnabled, uint16_t timeInSeconds) noexcept
     {
         const linger optionValue{ (u_short)isEnabled, (u_short)timeInSeconds };
-        if (setsockopt(reinterpret_cast<SOCKET>(socketHandle), SOL_SOCKET, SO_LINGER,
-            reinterpret_cast<const char*>(&optionValue), sizeof(linger)) != 0)
+        if (setsockopt(ToNativeSocketHandle(socketHandle), SOL_SOCKET, SO_LINGER,
+                reinterpret_cast<const char*>(&optionValue), (int)sizeof(linger)) != 0)
         {
             ErrorHandler::Handle_setsockopt();
             return ErrorIndicator::Error;
@@ -268,11 +327,11 @@ namespace SDS
         return (ErrorIndicator)1;
     }
 
-    ErrorIndicator SetIPUDPSocketBroadcast(SocketHandle socketHandle, Bool isEnabled) noexcept
+    ErrorIndicator SetSocketBroadcast(SocketHandle socketHandle, Bool isEnabled) noexcept
     {
         const auto optionValue = (BOOL)isEnabled;
-        if (setsockopt(reinterpret_cast<SOCKET>(socketHandle), SOL_SOCKET, SO_BROADCAST, 
-                reinterpret_cast<const char*>(&optionValue), sizeof(BOOL)) != 0)
+        if (setsockopt(ToNativeSocketHandle(socketHandle), SOL_SOCKET, SO_BROADCAST,
+                reinterpret_cast<const char*>(&optionValue), (int)sizeof(BOOL)) != 0)
         {
             ErrorHandler::Handle_setsockopt();
             return ErrorIndicator::Error;
@@ -468,13 +527,13 @@ namespace SDS
         assert(type == SOCK_STREAM && protocol == IPPROTO_TCP ||
             type == SOCK_DGRAM && protocol == IPPROTO_UDP);
 
-        if (const auto socketHandle = socket(socketNameInNetworkBO_inout.sa_family, type, protocol); socketHandle != INVALID_SOCKET)
+        if (auto socketHandle = socket(socketNameInNetworkBO_inout.sa_family, type, protocol); socketHandle != INVALID_SOCKET)
         {
             auto isNonBlockingModeEnabled = (u_long)1;
             if (ioctlsocket(socketHandle, FIONBIO, &isNonBlockingModeEnabled) == 0)
             {
                 if (_BindSocket(socketHandle, socketNameInNetworkBO_inout, socketNameSizeInBytes))
-                    return reinterpret_cast<SocketHandle>(socketHandle);
+                    return ToSocketHandle(socketHandle);
             }
             else
             {
