@@ -19,13 +19,13 @@ namespace SDS
 			IsNotInitialized,
 
 			NetworkSubsystemFailed,
-			TCPSocketAddressIsTakenOrInWaitState,
+			SocketAddressIsTaken, //For TCP sockets, it can also mean that the socket address is in the TIME_WAIT state.
 			AllDynamicPortsAreTaken,
 			UnavailableIPAddress,
+			InvalidIPAddress,
 			PortNumberIsInvalid,
 			InvalidSocketHandle,
 			UnsupportedSocketOption,
-			BroadcastIsNotEnabled,
 
 			CannotReachNetwork,
 			CannotReachAnotherHost,
@@ -33,9 +33,11 @@ namespace SDS
 			CannotEstablishConnection,
 			SocketIsAlreadyConnectedOrConnecting,
 			SocketIsAlreadyInListeningMode,
-			InvalidIPAddressToConnectTo,
 			SocketDoesNotSupportListeningMode,
 			SocketMustBeInListeningMode,
+			BroadcastIsNotEnabled,
+			SocketMustBeConnected,
+			PeerHasDifferentSocketAddress,
 
 			NotSupportedMachine,
 			NetworkSubsystemIsUnavailable,

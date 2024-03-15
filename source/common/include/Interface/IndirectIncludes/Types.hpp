@@ -65,4 +65,18 @@ namespace SDS
 		IPv4Address v4;
 		IPv6Address v6;
 	};
+
+	//Due to the small size of the IPv4Address structure, it was decided to put IPv4 and IPv6 addresses together.
+	//But either of them should be ignored and set to zero.
+	struct alignas(8) ErrorIPSocketAddress
+	{
+		ErrorIndicator errorIndicator;
+
+		std::byte __padding[1]; //This must be ignored.
+
+		uint16_t port; //Zero port number is invalid.
+
+		IPv4Address v4;
+		IPv6Address v6;
+	};
 }

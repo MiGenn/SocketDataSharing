@@ -18,8 +18,8 @@ namespace SDS
     static SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
     static SocketHandle _CreateAndBindIPv6Socket(int type, int protocol,
         const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept;
-    static SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
-    static bool _BindSocket(SOCKET socketToBind, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept;
+    static SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept;
+    static bool _BindSocket(SOCKET socketToBind, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept;
 
     inline static SocketHandle ToSocketHandle(SOCKET nativeSocketHandle) noexcept
     {
@@ -191,7 +191,7 @@ namespace SDS
     {
         if (InternalIPv4AddressUtils::IsZero(ipv4Address))
         {
-            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            ErrorHandler::SignalError(Error::InvalidIPAddress);
             return nullptr;
         }
 
@@ -208,7 +208,7 @@ namespace SDS
     {
         if (InternalIPv4AddressUtils::IsZero(ipv4Address))
         {
-            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            ErrorHandler::SignalError(Error::InvalidIPAddress);
             return nullptr;
         }
 
@@ -225,7 +225,7 @@ namespace SDS
     {
         if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
         {
-            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            ErrorHandler::SignalError(Error::InvalidIPAddress);
             return nullptr;
         }
 
@@ -242,7 +242,7 @@ namespace SDS
     {
         if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
         {
-            ErrorHandler::SignalError(Error::UnavailableIPAddress);
+            ErrorHandler::SignalError(Error::InvalidIPAddress);
             return nullptr;
         }
 
@@ -283,6 +283,68 @@ namespace SDS
         }
 
         return (ErrorIndicator)1;
+    }
+
+    ErrorIndicator AcceptNewConnectionFor(SocketHandle listeningSocketHandle, SocketHandle* newConnectionSocketHandle_out) noexcept
+    {
+        if (newConnectionSocketHandle_out == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
+            return ErrorIndicator::Error;
+        }
+
+        auto newConnection = accept(ToNativeSocketHandle(listeningSocketHandle), nullptr, nullptr);
+        if (newConnection == INVALID_SOCKET)
+        {
+            const int errorCode = WSAGetLastError();
+            if (errorCode != WSAEWOULDBLOCK && errorCode != WSAECONNRESET)
+            {
+                ErrorHandler::Handle_accept();
+                return ErrorIndicator::Error;
+            }
+        }
+
+        *newConnectionSocketHandle_out = ToSocketHandle(newConnection);
+        return (ErrorIndicator)1;
+    }
+
+    ErrorIPSocketAddress GetConnectedPeerIPSocketAddress(SocketHandle connectedSocketHandle) noexcept
+    {
+        ErrorIPSocketAddress errorIPSocketAddress{};
+
+        sockaddr_in6 socketAddress; //Used as a buffer for any IP address family.
+        auto socketAddressSizeInBytes = (int)sizeof(sockaddr_in6);
+
+        if (getpeername(ToNativeSocketHandle(connectedSocketHandle), reinterpret_cast<sockaddr*>(&socketAddress), &socketAddressSizeInBytes) != 0)
+        {
+            if (WSAGetLastError() != WSAEFAULT)
+                ErrorHandler::Handle_getpeername();
+            else
+                ErrorHandler::SignalError(Error::PeerHasDifferentSocketAddress);
+
+            return errorIPSocketAddress;
+        }
+
+        errorIPSocketAddress.errorIndicator = (ErrorIndicator)1;
+        errorIPSocketAddress.port = socketAddress.sin6_port;
+        
+        if (socketAddress.sin6_family == AF_INET)
+        {
+            InternalIPv4AddressUtils::CopyFrom(&socketAddress.sin6_flowinfo, errorIPSocketAddress.v4);
+        }
+        else if (socketAddress.sin6_family == AF_INET6)
+        {
+            InternalIPv6AddressUtils::CopyFrom(&socketAddress.sin6_addr, errorIPSocketAddress.v6);
+            errorIPSocketAddress.v6.flowInfo = socketAddress.sin6_flowinfo;
+            errorIPSocketAddress.v6.scopeID = socketAddress.sin6_scope_id;
+        }
+        else
+        {
+            ErrorHandler::SignalError(Error::PeerHasDifferentSocketAddress);
+            errorIPSocketAddress.errorIndicator = ErrorIndicator::Error;
+        }
+
+        return errorIPSocketAddress;
     }
 
     ErrorIndicator DestroySocket(SocketHandle socketHandle) noexcept
@@ -435,12 +497,12 @@ namespace SDS
                 }
                 else
                 {
-                    const auto& socketName = *reinterpret_cast<const sockaddr_in6*>(nextUnicastAddress->Address.lpSockaddr);
+                    const auto& socketAddress = *reinterpret_cast<const sockaddr_in6*>(nextUnicastAddress->Address.lpSockaddr);
 
                     networkIPAddresses_out.v6NetworkPrefixLength = (uint8_t)nextUnicastAddress->OnLinkPrefixLength;
-                    InternalIPv6AddressUtils::CopyFrom(&socketName.sin6_addr, networkIPAddresses_out.v6);
-                    networkIPAddresses_out.v6.scopeID = socketName.sin6_scope_id;
-                    networkIPAddresses_out.v6.flowInfo = socketName.sin6_flowinfo;
+                    InternalIPv6AddressUtils::CopyFrom(&socketAddress.sin6_addr, networkIPAddresses_out.v6);
+                    networkIPAddresses_out.v6.scopeID = socketAddress.sin6_scope_id;
+                    networkIPAddresses_out.v6.flowInfo = socketAddress.sin6_flowinfo;
                 }
 
                 isNetworkIPAddressesNotEmpty = true;
@@ -488,14 +550,14 @@ namespace SDS
     //If the passed port number is 0, it will be updated.
     SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept
     {
-        sockaddr_in socketName;
-        socketName.sin_family = AF_INET;
-        socketName.sin_port = HostToNetworkBO(portNumberInHostBO_inout);
-        InternalIPv4AddressUtils::CopyFrom(ipv4Address.octets, reinterpret_cast<IPv4Address&>(socketName.sin_addr));
+        sockaddr_in socketAddress;
+        socketAddress.sin_family = AF_INET;
+        socketAddress.sin_port = HostToNetworkBO(portNumberInHostBO_inout);
+        InternalIPv4AddressUtils::CopyFrom(ipv4Address.octets, reinterpret_cast<IPv4Address&>(socketAddress.sin_addr));
 
-        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketName), (int)sizeof(sockaddr_in));
+        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketAddress), (int)sizeof(sockaddr_in));
         if (socketHandle != nullptr)
-            portNumberInHostBO_inout = NetworkToHostBO(socketName.sin_port);
+            portNumberInHostBO_inout = NetworkToHostBO(socketAddress.sin_port);
 
         return socketHandle;
     }
@@ -505,34 +567,34 @@ namespace SDS
     SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
         const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept
     {
-        sockaddr_in6 socketName;
-        socketName.sin6_family = AF_INET6;
-        socketName.sin6_port = HostToNetworkBO(portNumberInHostBO_inout);
-        socketName.sin6_flowinfo = ipv4AddressInNetworkBO.flowInfo;
-        InternalIPv6AddressUtils::CopyFrom(ipv4AddressInNetworkBO.hextets, reinterpret_cast<IPv6Address&>(socketName.sin6_addr));
-        socketName.sin6_scope_id = ipv4AddressInNetworkBO.scopeID;
+        sockaddr_in6 socketAddress;
+        socketAddress.sin6_family = AF_INET6;
+        socketAddress.sin6_port = HostToNetworkBO(portNumberInHostBO_inout);
+        socketAddress.sin6_flowinfo = ipv4AddressInNetworkBO.flowInfo;
+        InternalIPv6AddressUtils::CopyFrom(ipv4AddressInNetworkBO.hextets, reinterpret_cast<IPv6Address&>(socketAddress.sin6_addr));
+        socketAddress.sin6_scope_id = ipv4AddressInNetworkBO.scopeID;
 
-        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketName), (int)sizeof(sockaddr_in6));
+        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketAddress), (int)sizeof(sockaddr_in6));
         if (socketHandle != nullptr)
-            portNumberInHostBO_inout = NetworkToHostBO(socketName.sin6_port);
+            portNumberInHostBO_inout = NetworkToHostBO(socketAddress.sin6_port);
 
         return socketHandle;
     }
 
     //The returned socket handle can only be nullptr if an error occured.
     //If the passed port number is 0, it will be updated.
-    SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept
+    SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept
     {
-        assert(socketNameInNetworkBO_inout.sa_family != AF_UNSPEC);
+        assert(socketAddressInNetworkBO_inout.sa_family != AF_UNSPEC);
         assert(type == SOCK_STREAM && protocol == IPPROTO_TCP ||
             type == SOCK_DGRAM && protocol == IPPROTO_UDP);
 
-        if (auto socketHandle = socket(socketNameInNetworkBO_inout.sa_family, type, protocol); socketHandle != INVALID_SOCKET)
+        if (auto socketHandle = socket(socketAddressInNetworkBO_inout.sa_family, type, protocol); socketHandle != INVALID_SOCKET)
         {
             auto isNonBlockingModeEnabled = (u_long)1;
             if (ioctlsocket(socketHandle, FIONBIO, &isNonBlockingModeEnabled) == 0)
             {
-                if (_BindSocket(socketHandle, socketNameInNetworkBO_inout, socketNameSizeInBytes))
+                if (_BindSocket(socketHandle, socketAddressInNetworkBO_inout, socketAddressSizeInBytes))
                     return ToSocketHandle(socketHandle);
             }
             else
@@ -545,19 +607,19 @@ namespace SDS
             return nullptr;
         }
 
-        ErrorHandler::Handle_socket(socketNameInNetworkBO_inout.sa_family, type, protocol);
+        ErrorHandler::Handle_socket(socketAddressInNetworkBO_inout.sa_family, type, protocol);
         return nullptr;
     }
     
     //The bool value is set to false if the function failed.
     //If the passed port number is 0, it will be updated.
-    bool _BindSocket(SOCKET socketToBind, sockaddr& socketNameInNetworkBO_inout, int socketNameSizeInBytes) noexcept
+    bool _BindSocket(SOCKET socketToBind, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept
     {
-        if (bind(socketToBind, &socketNameInNetworkBO_inout, socketNameSizeInBytes) == 0)
+        if (bind(socketToBind, &socketAddressInNetworkBO_inout, socketAddressSizeInBytes) == 0)
         {
-            if (reinterpret_cast<uint16_t*>(&socketNameInNetworkBO_inout)[1] == (uint16_t)0) //Checks for the port number being zero.
+            if (reinterpret_cast<uint16_t*>(&socketAddressInNetworkBO_inout)[1] == (uint16_t)0) //Checks for the port number being zero.
             {
-                if (getsockname(socketToBind, &socketNameInNetworkBO_inout, &socketNameSizeInBytes) != 0)
+                if (getsockname(socketToBind, &socketAddressInNetworkBO_inout, &socketAddressSizeInBytes) != 0)
                 {
                     ErrorHandler::Handle_getsockname();
                     return false;

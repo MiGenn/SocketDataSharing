@@ -4,7 +4,7 @@
 
 #include "IndirectIncludes/SocketDataSharingAPIDefine.hpp"
 
-//The library is not thread safe and uses only non-blocking sockets!
+//The library is not completely thread safe and uses only non-blocking sockets!
 //In order to use the static version of the library you need to define SOCKETDATASHARING_STATIC.
 
 namespace SDS
@@ -70,6 +70,14 @@ namespace SDS
 		//Connections which have no place in the queue are rejected (Error::AnotherHostRejectedConnection).
 		SOCKETDATASHARING_API ErrorIndicator SetSocketInListeningMode(SocketHandle socketHandle, int32_t pendingConnectionQueueSize) noexcept;
 
+		//This function can only be used with listening sockets.
+		//Call it to pop the pending connecion queue. If the queue is empty, it will set the newConnectionSocketHandle_out to null.
+		SOCKETDATASHARING_API ErrorIndicator AcceptNewConnectionFor(SocketHandle listeningSocketHandle, SocketHandle* newConnectionSocketHandle_out) noexcept;
+
+		//Peer is just another host.
+		//This function returns socketAddresses in network byte order.
+		SOCKETDATASHARING_API ErrorIPSocketAddress GetConnectedPeerIPSocketAddress(SocketHandle connectedSocketHandle) noexcept;
+
 		//This function may or may not destroy the socket immediately, if it is a TCP one.
 		//It depends on what you passed to the SetSocketDestructionTimeout function.
 		//The socket handle will become unusable if no error occured.
@@ -87,7 +95,7 @@ namespace SDS
 		//The option is set to Bool::False by default.
 		SOCKETDATASHARING_API ErrorIndicator SetSocketDestructionTimeout(SocketHandle socketHandle, Bool isEnabled, uint16_t timeInSeconds) noexcept;
 
-		//This function only works with UDP sockets.
+		//This function only works with IPv4 UDP sockets.
 		//The option is set to Bool::False by default.
 		SOCKETDATASHARING_API ErrorIndicator SetSocketBroadcast(SocketHandle socketHandle, Bool isEnabled) noexcept;
 	}

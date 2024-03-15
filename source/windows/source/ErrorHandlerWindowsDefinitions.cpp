@@ -223,7 +223,7 @@ void ErrorHandler::Handle_bind() noexcept
     //It shouldn't happen because the library doesn't use SO_REUSEADDR option.    
     case WSAEACCES:
     case WSAEADDRINUSE:
-        error = Error::TCPSocketAddressIsTakenOrInWaitState;
+        error = Error::SocketAddressIsTaken;
         break;
 
     case WSAENOBUFS:
@@ -388,7 +388,7 @@ void ErrorHandler::Handle_listen() noexcept
         break;
 
     case WSAEADDRINUSE: //Happens if the address was set to a zero one in the bind call.
-        error = Error::TCPSocketAddressIsTakenOrInWaitState;
+        error = Error::SocketAddressIsTaken;
         break;
 
     case WSAENOBUFS:
@@ -467,6 +467,39 @@ void ErrorHandler::Handle_accept() noexcept
     CALL_CALLBACK;
 }
 
+void ErrorHandler::Handle_getpeername() noexcept
+{
+    const auto errorCode = WSAGetLastError();
+    assert(errorCode != 0);
+
+    assert(errorCode != WSAEFAULT); //Invalid arguments.
+
+    switch (errorCode)
+    {
+    case WSAENETDOWN:
+        error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENOTCONN:
+        error = Error::SocketMustBeConnected;
+        break;
+
+    case WSAENOTSOCK:
+        error = Error::InvalidSocketHandle;
+        break;
+
+    case WSANOTINITIALISED:
+        error = Error::IsNotInitialized;
+        break;
+
+    default:
+        error = Error::UnexpectedSystemError;
+    }
+
+    WSASetLastError(0);
+    CALL_CALLBACK;
+}
+
 void ErrorHandler::Handle_connect() noexcept
 {
     const auto errorCode = WSAGetLastError();
@@ -498,12 +531,12 @@ void ErrorHandler::Handle_connect() noexcept
         break;
 
     case WSAEADDRINUSE: //Happens if the address was set to a zero one in the bind call.
-        error = Error::TCPSocketAddressIsTakenOrInWaitState;
+        error = Error::SocketAddressIsTaken;
         break;
 
     case WSAEADDRNOTAVAIL: //Happens if the address to connect to was set to a zero one.
     case WSAEAFNOSUPPORT:
-        error = Error::InvalidIPAddressToConnectTo;
+        error = Error::InvalidIPAddress;
         break;
 
     case WSAEALREADY: //TODO: can probably be removed

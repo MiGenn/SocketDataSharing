@@ -38,6 +38,7 @@ public:
 	static void Handle_getsockopt() noexcept;
 	static void Handle_listen() noexcept;
 	static void Handle_accept() noexcept;
+	static void Handle_getpeername() noexcept;
 	static void Handle_connect() noexcept;
 #endif
 
