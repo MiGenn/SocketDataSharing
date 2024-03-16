@@ -11,15 +11,21 @@
 
 namespace SDS
 {
-    static std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept;
-    static std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
-    static bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
-    static const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
-    static SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
-    static SocketHandle _CreateAndBindIPv6Socket(int type, int protocol,
-        const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept;
-    static SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept;
-    static bool _BindSocket(SOCKET socketToBind, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept;
+    inline static std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept;
+    inline static std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept;
+    inline static bool _SetNetworkIPAddressesFromIPAdapter(
+        const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept;
+    inline static const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6Address) noexcept;
+    inline static SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, 
+        IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept;
+    inline static SocketHandle _CreateAndBindIPv6Socket(int type, int protocol,
+        const IPv6Address& ipv6AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept;
+    inline static SocketHandle _CreateAndBindIPSocket(int type, int protocol, 
+        sockaddr& socketAddressInNetworkBO_inout, int socketAddressSize, bool shouldUpdatePortNumber = false) noexcept;
+    inline static bool _BindIPSocket(SOCKET socketToBind, sockaddr& socketAddressInNetworkBO_inout, 
+        int socketAddressSize, bool shouldUpdatePortNumber = false) noexcept;
+    inline static SocketHandle _CreateIPTCPConnection(uint16_t portNumberToConnectFromInHostBO,
+        const sockaddr& socketAddressInNetworkBO, int socketAddressSize) noexcept;
 
     inline static SocketHandle ToSocketHandle(SOCKET nativeSocketHandle) noexcept
     {
@@ -42,7 +48,6 @@ namespace SDS
 
         WSADATA wsaData;
         static constexpr auto requstedVersion = MAKEWORD(2, 2);
-
         if (const int errorCode = WSAStartup(requstedVersion, &wsaData);
             errorCode != 0)
         {
@@ -255,12 +260,50 @@ namespace SDS
         return _CreateAndBindIPv6Socket(SOCK_DGRAM, IPPROTO_UDP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
     }
 
+    SocketHandle CreateIPv4TCPConnection(uint16_t portNumberToConnectFromInHostBO, 
+        IPv4Address ipv4AddressToConnectTo, uint16_t portNumberToConnectToInHostBO) noexcept
+    {
+        if (portNumberToConnectToInHostBO == (uint16_t)0)
+        {
+            ErrorHandler::SignalError(Error::PortNumberIsInvalid);
+            return nullptr;
+        }
+
+        sockaddr_in socketAddressToConnectTo;
+        socketAddressToConnectTo.sin_family = AF_INET;
+        socketAddressToConnectTo.sin_port = HostToNetworkBO(portNumberToConnectToInHostBO);
+        InternalIPv4AddressUtils::CopyTo(&socketAddressToConnectTo.sin_addr, ipv4AddressToConnectTo);
+
+        return _CreateIPTCPConnection(portNumberToConnectFromInHostBO, reinterpret_cast<sockaddr&>(socketAddressToConnectTo), sizeof(sockaddr_in));
+    }
+
+    SocketHandle CreateIPv6TCPConnection(uint16_t portNumberToConnectFromInHostBO,
+        IPv6Address ipv6AddressToConnectToInHostBO, uint16_t portNumberToConnectToInHostBO) noexcept
+    {
+        if (portNumberToConnectToInHostBO == (uint16_t)0)
+        {
+            ErrorHandler::SignalError(Error::PortNumberIsInvalid);
+            return nullptr;
+        }
+
+        InternalIPv6AddressUtils::ToNetworkBO(ipv6AddressToConnectToInHostBO, ipv6AddressToConnectToInHostBO);
+
+        sockaddr_in6 socketAddressToConnectTo;
+        socketAddressToConnectTo.sin6_family = AF_INET6;
+        socketAddressToConnectTo.sin6_port = HostToNetworkBO(portNumberToConnectToInHostBO);
+        socketAddressToConnectTo.sin6_flowinfo = ipv6AddressToConnectToInHostBO.flowInfo;
+        InternalIPv6AddressUtils::CopyTo(&socketAddressToConnectTo.sin6_addr, ipv6AddressToConnectToInHostBO);
+        socketAddressToConnectTo.sin6_scope_id = (ULONG)0;
+
+        return _CreateIPTCPConnection(portNumberToConnectFromInHostBO, reinterpret_cast<sockaddr&>(socketAddressToConnectTo), sizeof(sockaddr_in6));
+    }
+
     ErrorIndicator SetSocketInListeningMode(SocketHandle socketHandle, int32_t pendingConnectionQueueSize) noexcept
     {
         BOOL isAlreadyListening{};
-        int boolSizeInBytes = sizeof(BOOL);
+        int boolSize = sizeof(BOOL);
         if (getsockopt(ToNativeSocketHandle(socketHandle), SOL_SOCKET, SO_ACCEPTCONN, 
-                reinterpret_cast<char*>(&isAlreadyListening), &boolSizeInBytes) != 0)
+                reinterpret_cast<char*>(&isAlreadyListening), &boolSize) != 0)
         {
             if (WSAGetLastError() == WSAENOPROTOOPT)
                 ErrorHandler::SignalError(Error::SocketDoesNotSupportListeningMode);
@@ -285,9 +328,9 @@ namespace SDS
         return (ErrorIndicator)1;
     }
 
-    ErrorIndicator AcceptNewConnectionFor(SocketHandle listeningSocketHandle, SocketHandle* newConnectionSocketHandle_out) noexcept
+    ErrorIndicator AcceptNewConnection(SocketHandle listeningSocketHandle, SocketHandle* newConnectionHandle_out) noexcept
     {
-        if (newConnectionSocketHandle_out == nullptr)
+        if (newConnectionHandle_out == nullptr)
         {
             ErrorHandler::SignalError(Error::PassedPointerIsNull);
             return ErrorIndicator::Error;
@@ -304,7 +347,7 @@ namespace SDS
             }
         }
 
-        *newConnectionSocketHandle_out = ToSocketHandle(newConnection);
+        *newConnectionHandle_out = ToSocketHandle(newConnection);
         return (ErrorIndicator)1;
     }
 
@@ -313,9 +356,8 @@ namespace SDS
         ErrorIPSocketAddress errorIPSocketAddress{};
 
         sockaddr_in6 socketAddress; //Used as a buffer for any IP address family.
-        auto socketAddressSizeInBytes = (int)sizeof(sockaddr_in6);
-
-        if (getpeername(ToNativeSocketHandle(connectedSocketHandle), reinterpret_cast<sockaddr*>(&socketAddress), &socketAddressSizeInBytes) != 0)
+        auto socketAddressSize = (int)sizeof(sockaddr_in6);
+        if (getpeername(ToNativeSocketHandle(connectedSocketHandle), reinterpret_cast<sockaddr*>(&socketAddress), &socketAddressSize) != 0)
         {
             if (WSAGetLastError() != WSAEFAULT)
                 ErrorHandler::Handle_getpeername();
@@ -402,9 +444,9 @@ namespace SDS
         return (ErrorIndicator)1;
     }
 
-    //The pointer is null only if an error occured.
-    //The int value is used to store the protocol info array's size.
-    std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept
+    //The returned pointer is null only if an error occured.
+    //The returned int value is used to store the protocol info array's size.
+    inline std::pair<WSAPROTOCOL_INFOW*, int> _GetAvailableProtocols() noexcept
     {
         try
         {
@@ -437,9 +479,9 @@ namespace SDS
         return { nullptr, 0 };
     }
 
-    //The bool value is set to false if the function failed.
-    //The pointer can be null if no data was found.
-    std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept
+    //The returned bool value is set to false if the function failed.
+    //The returned pointer can be null if no data was found.
+    inline std::pair<bool, IP_ADAPTER_ADDRESSES*> _GetIPAdapters() noexcept
     {
         static constexpr ULONG flags = GAA_FLAG_SKIP_ANYCAST & GAA_FLAG_SKIP_MULTICAST &
             GAA_FLAG_SKIP_DNS_SERVER & GAA_FLAG_SKIP_FRIENDLY_NAME;
@@ -478,8 +520,8 @@ namespace SDS
         return { false, nullptr };
     }
 
-    //The bool value is set to true if at least one IP address was assigned.
-    bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept
+    //The returned bool value is set to true if at least one IP address was assigned.
+    inline bool _SetNetworkIPAddressesFromIPAdapter(const IP_ADAPTER_ADDRESSES& ipAdapter, NetworkIPAddresses& networkIPAddresses_out) noexcept
     {
         networkIPAddresses_out = {};
 
@@ -494,6 +536,7 @@ namespace SDS
                     networkIPAddresses_out.v4NetworkPrefixLength = (uint8_t)nextUnicastAddress->OnLinkPrefixLength;
                     InternalIPv4AddressUtils::CopyFrom(
                         &reinterpret_cast<const sockaddr_in*>(nextUnicastAddress->Address.lpSockaddr)->sin_addr, networkIPAddresses_out.v4);
+
                 }
                 else
                 {
@@ -514,8 +557,8 @@ namespace SDS
         return isNetworkIPAddressesNotEmpty;
     }
 
-    //This function returns a poiter to the best IPAddress.
-    const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6AddressInNetworkBO) noexcept
+    //This function returns a pointer to the best IPAddress.
+    inline const void* _ChooseBestIPAddressInNetworkBO(const IPv4Address& ipv4Address, const IPv6Address& ipv6AddressInNetworkBO) noexcept
     {
         auto ipv4PriorityLevel = (uint8_t)1;
         if (InternalIPv4AddressUtils::IsPrivate(ipv4Address))
@@ -547,15 +590,17 @@ namespace SDS
     }
 
     //The returned socket handle can only be nullptr if an error occured.
-    //If the passed port number is 0, it will be updated.
-    SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept
+    //The port number will be updated only if the address isn't zero.
+    inline SocketHandle _CreateAndBindIPv4Socket(int type, int protocol, 
+        IPv4Address ipv4Address, uint16_t& portNumberInHostBO_inout) noexcept
     {
         sockaddr_in socketAddress;
         socketAddress.sin_family = AF_INET;
         socketAddress.sin_port = HostToNetworkBO(portNumberInHostBO_inout);
-        InternalIPv4AddressUtils::CopyFrom(ipv4Address.octets, reinterpret_cast<IPv4Address&>(socketAddress.sin_addr));
+        InternalIPv4AddressUtils::CopyTo(&socketAddress.sin_addr, ipv4Address);
 
-        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketAddress), (int)sizeof(sockaddr_in));
+        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketAddress), 
+            (int)sizeof(sockaddr_in), !InternalIPv4AddressUtils::IsZero(ipv4Address));
         if (socketHandle != nullptr)
             portNumberInHostBO_inout = NetworkToHostBO(socketAddress.sin_port);
 
@@ -563,18 +608,19 @@ namespace SDS
     }
 
     //The returned socket handle can only be nullptr if an error occured.
-    //If the passed port number is 0, it will be updated.
-    SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
-        const IPv6Address& ipv4AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept
+    //The port number will be updated only if the address isn't zero.
+    inline SocketHandle _CreateAndBindIPv6Socket(int type, int protocol, 
+        const IPv6Address& ipv6AddressInNetworkBO, uint16_t& portNumberInHostBO_inout) noexcept
     {
         sockaddr_in6 socketAddress;
         socketAddress.sin6_family = AF_INET6;
         socketAddress.sin6_port = HostToNetworkBO(portNumberInHostBO_inout);
-        socketAddress.sin6_flowinfo = ipv4AddressInNetworkBO.flowInfo;
-        InternalIPv6AddressUtils::CopyFrom(ipv4AddressInNetworkBO.hextets, reinterpret_cast<IPv6Address&>(socketAddress.sin6_addr));
-        socketAddress.sin6_scope_id = ipv4AddressInNetworkBO.scopeID;
+        socketAddress.sin6_flowinfo = ipv6AddressInNetworkBO.flowInfo;
+        InternalIPv6AddressUtils::CopyTo(&socketAddress.sin6_addr, ipv6AddressInNetworkBO);
+        socketAddress.sin6_scope_id = ipv6AddressInNetworkBO.scopeID;
 
-        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketAddress), (int)sizeof(sockaddr_in6));
+        auto* const socketHandle = _CreateAndBindIPSocket(type, protocol, reinterpret_cast<sockaddr&>(socketAddress), 
+            (int)sizeof(sockaddr_in6), !InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO));
         if (socketHandle != nullptr)
             portNumberInHostBO_inout = NetworkToHostBO(socketAddress.sin6_port);
 
@@ -582,10 +628,12 @@ namespace SDS
     }
 
     //The returned socket handle can only be nullptr if an error occured.
-    //If the passed port number is 0, it will be updated.
-    SocketHandle _CreateAndBindIPSocket(int type, int protocol, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept
+    //If the passed port number is zero and shouldUpdatePortNumber is true, it will updated the port number.
+    //Don't set the shouldUpdatePortNumber parameter to true if the address may be zero.
+    inline SocketHandle _CreateAndBindIPSocket(int type, int protocol, 
+        sockaddr& socketAddressInNetworkBO_inout, int socketAddressSize, bool shouldUpdatePortNumber) noexcept
     {
-        assert(socketAddressInNetworkBO_inout.sa_family != AF_UNSPEC);
+        assert(socketAddressInNetworkBO_inout.sa_family == AF_INET || socketAddressInNetworkBO_inout.sa_family == AF_INET6);
         assert(type == SOCK_STREAM && protocol == IPPROTO_TCP ||
             type == SOCK_DGRAM && protocol == IPPROTO_UDP);
 
@@ -594,7 +642,7 @@ namespace SDS
             auto isNonBlockingModeEnabled = (u_long)1;
             if (ioctlsocket(socketHandle, FIONBIO, &isNonBlockingModeEnabled) == 0)
             {
-                if (_BindSocket(socketHandle, socketAddressInNetworkBO_inout, socketAddressSizeInBytes))
+                if (_BindIPSocket(socketHandle, socketAddressInNetworkBO_inout, socketAddressSize, shouldUpdatePortNumber))
                     return ToSocketHandle(socketHandle);
             }
             else
@@ -602,8 +650,7 @@ namespace SDS
                 ErrorHandler::Handle_ioctlsocket();
             }
 
-            //In this context, it doesn't matter if it fails.
-            closesocket(socketHandle);
+            closesocket(socketHandle); //In this context, it doesn't matter if it fails.
             return nullptr;
         }
 
@@ -611,15 +658,18 @@ namespace SDS
         return nullptr;
     }
     
-    //The bool value is set to false if the function failed.
-    //If the passed port number is 0, it will be updated.
-    bool _BindSocket(SOCKET socketToBind, sockaddr& socketAddressInNetworkBO_inout, int socketAddressSizeInBytes) noexcept
+    //The returned bool value is set to false if the function failed.
+    //If the passed port number is zero and shouldUpdatePortNumber is true, it will updated the port number.
+    //Don't set the shouldUpdatePortNumber parameter to true if the address may be zero.
+    inline bool _BindIPSocket(SOCKET ipSocketToBind, sockaddr& ipSocketAddressInNetworkBO_inout, 
+        int ipSocketAddressSize, bool shouldUpdatePortNumber) noexcept
     {
-        if (bind(socketToBind, &socketAddressInNetworkBO_inout, socketAddressSizeInBytes) == 0)
+        if (bind(ipSocketToBind, &ipSocketAddressInNetworkBO_inout, ipSocketAddressSize) == 0)
         {
-            if (reinterpret_cast<uint16_t*>(&socketAddressInNetworkBO_inout)[1] == (uint16_t)0) //Checks for the port number being zero.
+            if (shouldUpdatePortNumber &&
+                reinterpret_cast<uint16_t*>(&ipSocketAddressInNetworkBO_inout)[1] == (uint16_t)0) //Checks for the port number being zero.
             {
-                if (getsockname(socketToBind, &socketAddressInNetworkBO_inout, &socketAddressSizeInBytes) != 0)
+                if (getsockname(ipSocketToBind, &ipSocketAddressInNetworkBO_inout, &ipSocketAddressSize) != 0)
                 {
                     ErrorHandler::Handle_getsockname();
                     return false;
@@ -631,5 +681,47 @@ namespace SDS
 
         ErrorHandler::Handle_bind();
         return false;
+    }
+    
+    inline SocketHandle _CreateIPTCPConnection(uint16_t portNumberToConnectFromInHostBO,
+        const sockaddr& socketAddressToConnectToInNetworkBO, int socketAddressToConnectToSize) noexcept
+    {
+        sockaddr_in6 socketAddress{}; //Used as a buffer for any IP address family.
+        socketAddress.sin6_family = socketAddressToConnectToInNetworkBO.sa_family;
+        socketAddress.sin6_port = HostToNetworkBO(portNumberToConnectFromInHostBO);
+
+        while (true)
+        {
+            auto connectingSocketHandle = _CreateAndBindIPSocket(SOCK_STREAM, IPPROTO_TCP,
+                reinterpret_cast<sockaddr&>(socketAddress), sizeof(sockaddr_in6));
+            if (connectingSocketHandle != nullptr)
+            {
+                if (connect(ToNativeSocketHandle(connectingSocketHandle),
+                    reinterpret_cast<const sockaddr*>(&socketAddressToConnectToInNetworkBO), socketAddressToConnectToSize) != 0)
+                {
+                    const int errorCode = WSAGetLastError();
+
+                    if (errorCode == WSAEADDRINUSE && portNumberToConnectFromInHostBO == (uint16_t)0)
+                    {
+                        if (closesocket(ToNativeSocketHandle(connectingSocketHandle)) != 0)
+                        {
+                            ErrorHandler::Handle_closesocket();
+                            return nullptr;
+                        }
+
+                        continue;
+                    }
+
+                    if (errorCode != WSAEWOULDBLOCK)
+                    {
+                        ErrorHandler::Handle_connect();
+                        closesocket(ToNativeSocketHandle(connectingSocketHandle)); //In this context, it doesn't matter if it fails. 
+                        connectingSocketHandle = nullptr;
+                    }
+                }
+            }
+
+            return connectingSocketHandle;
+        }    
     }
 }

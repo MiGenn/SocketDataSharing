@@ -506,12 +506,17 @@ void ErrorHandler::Handle_connect() noexcept
     assert(errorCode != 0);
 
     assert(errorCode != WSAEFAULT); //Invalid arguments.
+    assert(errorCode != WSAEACCES); //The broadcast option is not enabled for the UDP socket.
     assert(errorCode != WSAEWOULDBLOCK); //It's not an error.
 
     switch (errorCode)
     {
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
+        break;
+
+    case WSAENOBUFS:
+        error = Error::NotEnoughMemory;
         break;
 
     case WSAENETUNREACH:
@@ -546,14 +551,6 @@ void ErrorHandler::Handle_connect() noexcept
 
     case WSAEINVAL: //TODO: can probably be removed
         error = Error::SocketIsAlreadyInListeningMode;
-        break;
-
-    case WSAEACCES: //TODO: can probably be removed
-        error = Error::BroadcastIsNotEnabled;
-        break;
-
-    case WSAENOBUFS:
-        error = Error::NotEnoughMemory;
         break;
 
     case WSAENOTSOCK:

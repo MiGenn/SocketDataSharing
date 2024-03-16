@@ -5,8 +5,8 @@
 
 namespace InternalIPv6AddressUtils
 {
-	//Raw address must be at least 16 bytes long.
-	//It is only used to copy a IPv6 address itself, not the additional information such as scope ID or flow information.
+	//The raw address must be at least 16 bytes long.
+	//It is only used to copy the IPv6 address itself, not the additional information such as scope ID or flow information.
 	inline void CopyFrom(const void* rawAddress, SDS::IPv6Address& address_out) noexcept
 	{
 		assert(rawAddress != nullptr);
@@ -18,10 +18,17 @@ namespace InternalIPv6AddressUtils
 		addressToCopyTo[1] = addressToCopyFrom[1];
 	}
 
-	inline void CopyFrom(const SDS::IPv6Address& address, SDS::IPv6Address& address_out) noexcept
+	//The raw address must be at least 16 bytes long.
+	//It is only used to copy the IPv6 address itself, not the additional information such as scope ID or flow information.
+	inline void CopyTo(void* rawAddress_out, const SDS::IPv6Address& address) noexcept
 	{
-		CopyFrom(reinterpret_cast<const void*>(address.hextets), address_out);
-		reinterpret_cast<uint64_t&>(address_out.scopeID) = reinterpret_cast<const uint64_t&>(address.scopeID);
+		assert(rawAddress_out != nullptr);
+
+		const auto* const addressToCopyFrom = reinterpret_cast<const uint64_t*>(address.hextets);
+		auto* const addressToCopyTo = reinterpret_cast<uint64_t*>(rawAddress_out);
+
+		addressToCopyTo[0] = addressToCopyFrom[0];
+		addressToCopyTo[1] = addressToCopyFrom[1];
 	}
 
 	inline void ToHostBO(const SDS::IPv6Address& addressInNetworkBO, SDS::IPv6Address& addressInHostBO_out) noexcept

@@ -3,18 +3,21 @@
 
 #include "IndirectIncludes/SocketDataSharingAPIDefine.hpp"
 
-namespace SDS::IPv6AddressUtils
+namespace SDS
 {
-	//BO means byte order.
+	extern "C"
+	{
+		//BO means byte order.
 
-	SOCKETDATASHARING_API IPv6Address ToHostBO(const IPv6Address* addressInNetworkBO) noexcept;
-	SOCKETDATASHARING_API IPv6Address ToNetworkBO(const IPv6Address* addressInHostBO) noexcept;
+		SOCKETDATASHARING_API IPv6Address ToIPv6AddressInHostBO(IPv6Address addressInNetworkBO) noexcept;
+		SOCKETDATASHARING_API IPv6Address ToIPv6AddressInNetworkBO(IPv6Address addressInHostBO) noexcept;
 
-	SOCKETDATASHARING_API ErrorBool IsZero(const IPv6Address* address) noexcept;
-	SOCKETDATASHARING_API ErrorBool IsLoopback(const IPv6Address* address) noexcept;
-	SOCKETDATASHARING_API ErrorBool IsLoopbackInNetworkBO(const IPv6Address* addressInNetworkBO) noexcept;
-	SOCKETDATASHARING_API ErrorBool IsLinkLocal(const IPv6Address* address) noexcept;
-	SOCKETDATASHARING_API ErrorBool IsLinkLocalInNetworkBO(const IPv6Address* addressInNetworkBO) noexcept;
-	SOCKETDATASHARING_API ErrorBool IsPrivate(const IPv6Address* address) noexcept;
-	SOCKETDATASHARING_API ErrorBool IsPrivateInNetworBO(const IPv6Address* addressInNetworkBO) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressZero(IPv6Address address) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressLoopback(IPv6Address address) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressLoopbackInNetworkBO(IPv6Address addressInNetworkBO) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressLinkLocal(IPv6Address address) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressLinkLocalInNetworkBO(IPv6Address addressInNetworkBO) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressPrivate(IPv6Address address) noexcept;
+		SOCKETDATASHARING_API ErrorBool IsIPv6AddressPrivateInNetworBO(IPv6Address addressInNetworkBO) noexcept;
+	}
 }

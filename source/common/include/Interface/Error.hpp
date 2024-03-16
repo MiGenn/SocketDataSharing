@@ -35,7 +35,6 @@ namespace SDS
 			SocketIsAlreadyInListeningMode,
 			SocketDoesNotSupportListeningMode,
 			SocketMustBeInListeningMode,
-			BroadcastIsNotEnabled,
 			SocketMustBeConnected,
 			PeerHasDifferentSocketAddress,
 

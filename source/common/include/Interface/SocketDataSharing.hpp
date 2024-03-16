@@ -28,7 +28,7 @@ namespace SDS
 
 		//Host can be connected to multiple networks and have more than one IP address per network.
 		//This function returns all IP addresses assigned to each network. Some IP addresses can be zero but only one per network.
-		//If the host isn't connected to any network the returned IP address count is 0 but the data pointer isn't null.
+		//If the host isn't connected to any network the returned IP address count is zero but the data pointer isn't null.
 		//The NetworkIPAddresses array pointer is null only if an error occured and you don't need to deallocate the memory.
 		//The returned IPv6 addresses are in network byte order.
 		//Don't store the pointer and the size because their values may be changed after another GetNetworkIPAddressesArray call.
@@ -38,30 +38,36 @@ namespace SDS
 		SOCKETDATASHARING_API ErrorBool IsIPv4AddressPreferred(const NetworkIPAddresses* networkIPAddressesInNetworkBO) noexcept;
 
 		//Passing a zero address is illegal.
-		//Passing 0 will assign a random port number within the inclusive range of 49152 to 65535.
-		//In this case, the random number will be assigned to the portNumberInHostBO_inout.
-		//If an error occured, the returned pointer is zero.
+		//Passing a zero to portNumberInHostBO_inout will assign a random port number within the inclusive range of 49152 to 65535.
+		//If an error occured, the returned pointer is null.
 		SOCKETDATASHARING_API SocketHandle CreateIPv4TCPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept;
 
 		//Passing a zero address is illegal.
-		//Passing 0 will assign a random port number within the inclusive range of 49152 to 65535.
-		//In this case, the random number will be assigned to the portNumberInHostBO_inout.
-		//If an error occured, the returned pointer is zero.
+		//Passing a zero to portNumberInHostBO_inout will assign a random port number within the inclusive range of 49152 to 65535.
+		//If an error occured, the returned pointer is null.
 		SOCKETDATASHARING_API SocketHandle CreateIPv4UDPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept;
 
 		//Passing a zero address is illegal.
-		//Passing 0 will assign a random port number within the inclusive range of 49152 to 65535.
-		//In this case, the random number will be assigned to the portNumberInHostBO_inout.
-		//If an error occured, the returned pointer is zero.
+		//Passing a zero to portNumberInHostBO_inout will assign a random port number within the inclusive range of 49152 to 65535.
+		//If an error occured, the returned pointer is null.
 		SOCKETDATASHARING_API SocketHandle CreateIPv6TCPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept;
 
 		//Passing a zero address is illegal.
-		//Passing 0 will assign a random port number within the inclusive range of 49152 to 65535.
-		//In this case, the random number will be assigned to the portNumberInHostBO_inout.
-		//If an error occured, the returned pointer is zero.
+		//Passing a zero to portNumberInHostBO_inout will assign a random port number within the inclusive range of 49152 to 65535.
+		//If an error occured, the returned pointer is null.
 		SOCKETDATASHARING_API SocketHandle CreateIPv6UDPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept;
 
-		//TODO: create a function to create and connect a socket.
+		//Passing a zero to portNumberToConnectFromInHostBO will use a random port number within the inclusive range of 49152 to 65535.
+		//It's recommended to do so.
+		//Passing a zero to portNumberToConnectToInHostBO or a zero address to ipv4AddressToConnectTo is illegal.
+		SOCKETDATASHARING_API SocketHandle CreateIPv4TCPConnection(uint16_t portNumberToConnectFromInHostBO, 
+			IPv4Address ipv4AddressToConnectTo, uint16_t portNumberToConnectToInHostBO) noexcept;
+
+		//Passing a zero to portNumberToConnectFromInHostBO will use a random port number within the inclusive range of 49152 to 65535.
+		//It's recommended to do so.
+		//Passing a zero to portNumberToConnectToInHostBO or a zero address to ipv6AddressToConnectToInHostBO is illegal.
+		SOCKETDATASHARING_API SocketHandle CreateIPv6TCPConnection(uint16_t portNumberToConnectFromInHostBO,
+			IPv6Address ipv6AddressToConnectToInHostBO, uint16_t portNumberToConnectToInHostBO) noexcept;
 
 		//This function only works with TCP sockets.
 		//Once you activate the mode, you can't deactivate it and change the queue size.
@@ -71,11 +77,13 @@ namespace SDS
 		SOCKETDATASHARING_API ErrorIndicator SetSocketInListeningMode(SocketHandle socketHandle, int32_t pendingConnectionQueueSize) noexcept;
 
 		//This function can only be used with listening sockets.
-		//Call it to pop the pending connecion queue. If the queue is empty, it will set the newConnectionSocketHandle_out to null.
-		SOCKETDATASHARING_API ErrorIndicator AcceptNewConnectionFor(SocketHandle listeningSocketHandle, SocketHandle* newConnectionSocketHandle_out) noexcept;
+		//Call it to pop the pending connecion queue. If the queue is empty, it will set the newConnectionHandle_out to null.
+		//The connection socket has the same socket address as the listening socket but it also has another host's socket address.
+		SOCKETDATASHARING_API ErrorIndicator AcceptNewConnection(SocketHandle listeningSocketHandle, SocketHandle* newConnectionHandle_out) noexcept;
 
 		//Peer is just another host.
-		//This function returns socketAddresses in network byte order.
+		//This function returns socketAddresses in network byte order. You should know what IP version the peer is using.
+		//If you don't know, check any address of the returned structure for zero.
 		SOCKETDATASHARING_API ErrorIPSocketAddress GetConnectedPeerIPSocketAddress(SocketHandle connectedSocketHandle) noexcept;
 
 		//This function may or may not destroy the socket immediately, if it is a TCP one.
@@ -89,8 +97,8 @@ namespace SDS
 
 		//This function allows you to configure how the TCP socket connection will be closed in the DestroySocket function.
 		//Passing Bool::False will configure the socket to gracefully close the connection (the time parameter will be ignored).
-		//Passing non-Bool::False and setting time to zero will configure the socket to abruptly close the connection.
-		//Passing non-Bool::False and setting time to non-zero will configure the socket to continue to function untill
+		//Passing non-Bool::False and setting time to a zero will configure the socket to abruptly close the connection.
+		//Passing non-Bool::False and setting time to a non-zero will configure the socket to continue to function untill
 		//the timeout is expired. After that, the socket will abruptly close the connection.
 		//The option is set to Bool::False by default.
 		SOCKETDATASHARING_API ErrorIndicator SetSocketDestructionTimeout(SocketHandle socketHandle, Bool isEnabled, uint16_t timeInSeconds) noexcept;
