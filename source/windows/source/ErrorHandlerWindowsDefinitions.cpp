@@ -380,15 +380,14 @@ void ErrorHandler::Handle_listen() noexcept
     assert(errorCode != 0);
 
     assert(errorCode != WSAEINVAL); //Socket isn't bound.
+    assert(errorCode != WSAEADDRINUSE); //The address was set to zero in the bind call.
+    assert(errorCode != WSAEOPNOTSUPP); //The socket doesn't support listening mode.
+    assert(errorCode != WSAEISCONN); //The socket is connected or connecting.
 
     switch (errorCode)
     {
     case WSAENETDOWN:
         error = Error::NetworkSubsystemFailed;
-        break;
-
-    case WSAEADDRINUSE: //Happens if the address was set to a zero one in the bind call.
-        error = Error::SocketAddressIsTaken;
         break;
 
     case WSAENOBUFS:
@@ -397,14 +396,6 @@ void ErrorHandler::Handle_listen() noexcept
 
     case WSAEMFILE:
         error = Error::SystemSocketLimitIsReached;
-        break;
-
-    case WSAEOPNOTSUPP:
-        error = Error::SocketDoesNotSupportListeningMode;
-        break;
-
-    case WSAEISCONN:
-        error = Error::SocketIsAlreadyConnectedOrConnecting;
         break;
 
     case WSAENOTSOCK:
@@ -507,6 +498,8 @@ void ErrorHandler::Handle_connect() noexcept
 
     assert(errorCode != WSAEFAULT); //Invalid arguments.
     assert(errorCode != WSAEACCES); //The broadcast option is not enabled for the UDP socket.
+    assert(errorCode != WSAEINVAL); //The socket is in listening mode.
+    assert(errorCode != WSAEALREADY && errorCode != WSAEISCONN); //The socket is already connected or connecting.
     assert(errorCode != WSAEWOULDBLOCK); //It's not an error.
 
     switch (errorCode)
@@ -542,15 +535,6 @@ void ErrorHandler::Handle_connect() noexcept
     case WSAEADDRNOTAVAIL: //Happens if the address to connect to was set to a zero one.
     case WSAEAFNOSUPPORT:
         error = Error::InvalidIPAddress;
-        break;
-
-    case WSAEALREADY: //TODO: can probably be removed
-    case WSAEISCONN: //TODO: can probably be removed
-        error = Error::SocketIsAlreadyConnectedOrConnecting;
-        break;
-
-    case WSAEINVAL: //TODO: can probably be removed
-        error = Error::SocketIsAlreadyInListeningMode;
         break;
 
     case WSAENOTSOCK:

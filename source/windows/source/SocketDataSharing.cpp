@@ -24,7 +24,7 @@ namespace SDS
         sockaddr& socketAddressInNetworkBO_inout, int socketAddressSize, bool shouldUpdatePortNumber = false) noexcept;
     inline static bool _BindIPSocket(SOCKET socketToBind, sockaddr& socketAddressInNetworkBO_inout, 
         int socketAddressSize, bool shouldUpdatePortNumber = false) noexcept;
-    inline static SocketHandle _CreateIPTCPConnection(uint16_t portNumberToConnectFromInHostBO,
+    inline static SocketHandle _CreateAndConnectIPTCPSocket(uint16_t portNumberToConnectFromInHostBO,
         const sockaddr& socketAddressInNetworkBO, int socketAddressSize) noexcept;
 
     inline static SocketHandle ToSocketHandle(SOCKET nativeSocketHandle) noexcept
@@ -192,23 +192,6 @@ namespace SDS
         return ErrorBool::False;
     }
 
-    SocketHandle CreateIPv4TCPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept
-    {
-        if (InternalIPv4AddressUtils::IsZero(ipv4Address))
-        {
-            ErrorHandler::SignalError(Error::InvalidIPAddress);
-            return nullptr;
-        }
-
-        if (portNumberInHostBO_inout == nullptr)
-        {
-            ErrorHandler::SignalError(Error::PassedPointerIsNull);
-            return nullptr;
-        }
-
-        return _CreateAndBindIPv4Socket(SOCK_STREAM, IPPROTO_TCP, ipv4Address, *portNumberInHostBO_inout);
-    }
-
     SocketHandle CreateIPv4UDPSocket(IPv4Address ipv4Address, uint16_t* portNumberInHostBO_inout) noexcept
     {
         if (InternalIPv4AddressUtils::IsZero(ipv4Address))
@@ -225,24 +208,7 @@ namespace SDS
 
         return _CreateAndBindIPv4Socket(SOCK_DGRAM, IPPROTO_UDP, ipv4Address, *portNumberInHostBO_inout);
     }
-
-    SocketHandle CreateIPv6TCPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept
-    {
-        if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
-        {
-            ErrorHandler::SignalError(Error::InvalidIPAddress);
-            return nullptr;
-        }
-
-        if (portNumberInHostBO_inout == nullptr)
-        {
-            ErrorHandler::SignalError(Error::PassedPointerIsNull);
-            return nullptr;
-        }
-
-        return _CreateAndBindIPv6Socket(SOCK_STREAM, IPPROTO_TCP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
-    }
-
+   
     SocketHandle CreateIPv6UDPSocket(IPv6Address ipv6AddressInNetworkBO, uint16_t* portNumberInHostBO_inout) noexcept
     {
         if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
@@ -260,7 +226,69 @@ namespace SDS
         return _CreateAndBindIPv6Socket(SOCK_DGRAM, IPPROTO_UDP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
     }
 
-    SocketHandle CreateIPv4TCPConnection(uint16_t portNumberToConnectFromInHostBO, 
+    SocketHandle CreateListeningIPv4TCPSocket(IPv4Address ipv4Address, 
+        uint16_t* portNumberInHostBO_inout, uint32_t pendingConnectionQueueSize) noexcept
+    {
+        if (InternalIPv4AddressUtils::IsZero(ipv4Address))
+        {
+            ErrorHandler::SignalError(Error::InvalidIPAddress);
+            return nullptr;
+        }
+
+        if (portNumberInHostBO_inout == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
+            return nullptr;
+        }
+
+        auto listeningSocketHandle = _CreateAndBindIPv4Socket(SOCK_STREAM, IPPROTO_TCP, ipv4Address, *portNumberInHostBO_inout);
+        if (listeningSocketHandle != nullptr)
+        {
+            pendingConnectionQueueSize &= 0x7FFFFFFF;
+            if (listen(ToNativeSocketHandle(listeningSocketHandle), (int)pendingConnectionQueueSize) != 0)
+            {
+                ErrorHandler::Handle_listen();
+                closesocket(ToNativeSocketHandle(listeningSocketHandle)); //In this context, it doesn't matter if it fails. 
+                WSASetLastError(0);
+                listeningSocketHandle = nullptr;
+            }
+        }
+
+        return listeningSocketHandle;
+    }
+
+    SocketHandle CreateListeningIPv6TCPSocket(IPv6Address ipv6AddressInNetworkBO, 
+        uint16_t* portNumberInHostBO_inout, uint32_t pendingConnectionQueueSize) noexcept
+    {
+        if (InternalIPv6AddressUtils::IsZero(ipv6AddressInNetworkBO))
+        {
+            ErrorHandler::SignalError(Error::InvalidIPAddress);
+            return nullptr;
+        }
+
+        if (portNumberInHostBO_inout == nullptr)
+        {
+            ErrorHandler::SignalError(Error::PassedPointerIsNull);
+            return nullptr;
+        }
+
+        auto listeningSocketHandle = _CreateAndBindIPv6Socket(SOCK_STREAM, IPPROTO_TCP, ipv6AddressInNetworkBO, *portNumberInHostBO_inout);
+        if (listeningSocketHandle != nullptr)
+        {
+            pendingConnectionQueueSize &= 0x7FFFFFFF;
+            if (listen(ToNativeSocketHandle(listeningSocketHandle), (int)pendingConnectionQueueSize) != 0)
+            {
+                ErrorHandler::Handle_listen();
+                closesocket(ToNativeSocketHandle(listeningSocketHandle)); //In this context, it doesn't matter if it fails.
+                WSASetLastError(0);
+                listeningSocketHandle = nullptr;
+            }
+        }
+
+        return listeningSocketHandle;
+    }
+
+    SocketHandle CreateConnectedIPv4TCPSocket(uint16_t portNumberToConnectFromInHostBO, 
         IPv4Address ipv4AddressToConnectTo, uint16_t portNumberToConnectToInHostBO) noexcept
     {
         if (portNumberToConnectToInHostBO == (uint16_t)0)
@@ -274,10 +302,11 @@ namespace SDS
         socketAddressToConnectTo.sin_port = HostToNetworkBO(portNumberToConnectToInHostBO);
         InternalIPv4AddressUtils::CopyTo(&socketAddressToConnectTo.sin_addr, ipv4AddressToConnectTo);
 
-        return _CreateIPTCPConnection(portNumberToConnectFromInHostBO, reinterpret_cast<sockaddr&>(socketAddressToConnectTo), sizeof(sockaddr_in));
+        return _CreateAndConnectIPTCPSocket(portNumberToConnectFromInHostBO, 
+            reinterpret_cast<sockaddr&>(socketAddressToConnectTo), sizeof(sockaddr_in));
     }
 
-    SocketHandle CreateIPv6TCPConnection(uint16_t portNumberToConnectFromInHostBO,
+    SocketHandle CreateConnectedIPv6TCPSocket(uint16_t portNumberToConnectFromInHostBO,
         IPv6Address ipv6AddressToConnectToInHostBO, uint16_t portNumberToConnectToInHostBO) noexcept
     {
         if (portNumberToConnectToInHostBO == (uint16_t)0)
@@ -295,42 +324,13 @@ namespace SDS
         InternalIPv6AddressUtils::CopyTo(&socketAddressToConnectTo.sin6_addr, ipv6AddressToConnectToInHostBO);
         socketAddressToConnectTo.sin6_scope_id = (ULONG)0;
 
-        return _CreateIPTCPConnection(portNumberToConnectFromInHostBO, reinterpret_cast<sockaddr&>(socketAddressToConnectTo), sizeof(sockaddr_in6));
+        return _CreateAndConnectIPTCPSocket(portNumberToConnectFromInHostBO, 
+            reinterpret_cast<sockaddr&>(socketAddressToConnectTo), sizeof(sockaddr_in6));
     }
 
-    ErrorIndicator SetSocketInListeningMode(SocketHandle socketHandle, int32_t pendingConnectionQueueSize) noexcept
+    ErrorIndicator AcceptNewConnection(SocketHandle listeningSocketHandle, SocketHandle* connectedSocketHandle_out) noexcept
     {
-        BOOL isAlreadyListening{};
-        int boolSize = sizeof(BOOL);
-        if (getsockopt(ToNativeSocketHandle(socketHandle), SOL_SOCKET, SO_ACCEPTCONN, 
-                reinterpret_cast<char*>(&isAlreadyListening), &boolSize) != 0)
-        {
-            if (WSAGetLastError() == WSAENOPROTOOPT)
-                ErrorHandler::SignalError(Error::SocketDoesNotSupportListeningMode);
-            else
-                ErrorHandler::Handle_getsockopt();
-           
-            return ErrorIndicator::Error;
-        }
-
-        if (isAlreadyListening != (BOOL)0)
-        {
-            ErrorHandler::SignalError(Error::SocketIsAlreadyInListeningMode);
-            return ErrorIndicator::Error;
-        }
-
-        if (listen(ToNativeSocketHandle(socketHandle), pendingConnectionQueueSize) != 0)
-        {
-            ErrorHandler::Handle_listen();
-            return ErrorIndicator::Error;
-        }
-
-        return (ErrorIndicator)1;
-    }
-
-    ErrorIndicator AcceptNewConnection(SocketHandle listeningSocketHandle, SocketHandle* newConnectionHandle_out) noexcept
-    {
-        if (newConnectionHandle_out == nullptr)
+        if (connectedSocketHandle_out == nullptr)
         {
             ErrorHandler::SignalError(Error::PassedPointerIsNull);
             return ErrorIndicator::Error;
@@ -347,11 +347,11 @@ namespace SDS
             }
         }
 
-        *newConnectionHandle_out = ToSocketHandle(newConnection);
+        *connectedSocketHandle_out = ToSocketHandle(newConnection);
         return (ErrorIndicator)1;
     }
 
-    ErrorIPSocketAddress GetConnectedPeerIPSocketAddress(SocketHandle connectedSocketHandle) noexcept
+    ErrorIPSocketAddress GetAnotherHostIPSocketAddress(SocketHandle connectedSocketHandle) noexcept
     {
         ErrorIPSocketAddress errorIPSocketAddress{};
 
@@ -362,7 +362,7 @@ namespace SDS
             if (WSAGetLastError() != WSAEFAULT)
                 ErrorHandler::Handle_getpeername();
             else
-                ErrorHandler::SignalError(Error::PeerHasDifferentSocketAddress);
+                ErrorHandler::SignalError(Error::AnotherHostUsesIncompatibleSocketAddress);
 
             return errorIPSocketAddress;
         }
@@ -382,7 +382,7 @@ namespace SDS
         }
         else
         {
-            ErrorHandler::SignalError(Error::PeerHasDifferentSocketAddress);
+            ErrorHandler::SignalError(Error::AnotherHostUsesIncompatibleSocketAddress);
             errorIPSocketAddress.errorIndicator = ErrorIndicator::Error;
         }
 
@@ -651,6 +651,7 @@ namespace SDS
             }
 
             closesocket(socketHandle); //In this context, it doesn't matter if it fails.
+            WSASetLastError(0);
             return nullptr;
         }
 
@@ -683,7 +684,7 @@ namespace SDS
         return false;
     }
     
-    inline SocketHandle _CreateIPTCPConnection(uint16_t portNumberToConnectFromInHostBO,
+    inline SocketHandle _CreateAndConnectIPTCPSocket(uint16_t portNumberToConnectFromInHostBO,
         const sockaddr& socketAddressToConnectToInNetworkBO, int socketAddressToConnectToSize) noexcept
     {
         sockaddr_in6 socketAddress{}; //Used as a buffer for any IP address family.
@@ -716,6 +717,7 @@ namespace SDS
                     {
                         ErrorHandler::Handle_connect();
                         closesocket(ToNativeSocketHandle(connectingSocketHandle)); //In this context, it doesn't matter if it fails. 
+                        WSASetLastError(0);
                         connectingSocketHandle = nullptr;
                     }
                 }
